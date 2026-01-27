@@ -3,11 +3,13 @@
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Problem(BaseModel):
     """A LeetCode problem."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     title: str
     title_slug: str = Field(alias="titleSlug")
@@ -16,9 +18,6 @@ class Problem(BaseModel):
     topic_tags: list[str] = Field(default_factory=list, alias="topicTags")
     hints: list[str] = Field(default_factory=list)
     examples: list[dict[str, Any]] = Field(default_factory=list, alias="exampleTestcases")
-
-    class Config:
-        populate_by_name = True
 
 
 class DailyProblem(BaseModel):
