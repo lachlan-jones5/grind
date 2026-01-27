@@ -23,8 +23,10 @@ class Problem(BaseModel):
 class DailyProblem(BaseModel):
     """Daily challenge problem."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     date: str
-    title: str
+    title: str = Field(alias="questionTitle")
     title_slug: str = Field(alias="titleSlug")
     difficulty: str
     question: str

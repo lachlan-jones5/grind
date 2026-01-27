@@ -10,10 +10,7 @@ from grind.tui.app import (
     GrindApp,
     WelcomeScreen,
     PracticeScreen,
-    ProblemPanel,
     CodeEditor,
-    CoachPanel,
-    StatsBar,
     LANGUAGE_TEMPLATES,
 )
 from grind.config import Settings
@@ -68,21 +65,6 @@ class TestCodeEditor:
         """Test editor with unknown language uses empty template."""
         editor = CodeEditor(language="unknown")
         assert editor.text == ""
-
-
-class TestStatsBar:
-    """Tests for StatsBar widget."""
-
-    def test_stats_bar_initialization(self):
-        """Test stats bar initializes with stats dict."""
-        stats = {"streak": 5, "unique_problems": 42}
-        bar = StatsBar(stats)
-        assert bar.stats == stats
-
-    def test_stats_bar_missing_keys(self):
-        """Test stats bar handles missing keys."""
-        bar = StatsBar({})
-        assert bar.stats == {}
 
 
 class TestPracticeScreen:
@@ -183,27 +165,6 @@ class TestGrindApp:
         mock_client.assert_called_once()
         mock_coach.assert_called_once()
         mock_db.assert_called_once()
-
-
-class TestProblemPanel:
-    """Tests for ProblemPanel widget."""
-
-    def test_problem_panel_initialization(self):
-        """Test ProblemPanel creates markdown widget."""
-        panel = ProblemPanel()
-        # Panel should compose without error
-        children = list(panel.compose())
-        assert len(children) == 1
-
-
-class TestCoachPanel:
-    """Tests for CoachPanel widget."""
-
-    def test_coach_panel_initialization(self):
-        """Test CoachPanel creates markdown and input widgets."""
-        panel = CoachPanel()
-        children = list(panel.compose())
-        assert len(children) == 2  # Markdown and TextArea
 
 
 class TestPracticeScreenActions:

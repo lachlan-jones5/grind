@@ -2,8 +2,8 @@
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Footer, Header, Static, TextArea, Markdown, Button, Label
+from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.widgets import Footer, Header, Static, TextArea, Markdown, Label, Rule
 from textual.screen import Screen
 
 from grind.config import Settings, load_settings
@@ -36,13 +36,6 @@ let solve () =
 }
 
 
-class ProblemPanel(Static):
-    """Panel displaying the problem description."""
-
-    def compose(self) -> ComposeResult:
-        yield Markdown("# Welcome to Grind\n\nPress `d` for daily challenge or `p` to pick a problem.", id="problem-content")
-
-
 class CodeEditor(TextArea):
     """Vim-enabled code editor."""
 
@@ -56,27 +49,6 @@ class CodeEditor(TextArea):
         self.text = LANGUAGE_TEMPLATES.get(language, "")
 
 
-class CoachPanel(Static):
-    """Panel for AI coach interactions."""
-
-    def compose(self) -> ComposeResult:
-        yield Markdown("*Coach is ready. Ask for hints or discuss your approach.*", id="coach-content")
-        yield TextArea(id="coach-input", classes="coach-input")
-
-
-class StatsBar(Static):
-    """Statistics bar showing streak and progress."""
-
-    def __init__(self, stats: dict, **kwargs):
-        super().__init__(**kwargs)
-        self.stats = stats
-
-    def compose(self) -> ComposeResult:
-        streak = self.stats.get("streak", 0)
-        solved = self.stats.get("unique_problems", 0)
-        yield Label(f"🔥 {streak} day streak | ✅ {solved} solved", id="stats-label")
-
-
 class PracticeScreen(Screen):
     """Main practice screen with problem, editor, and coach."""
 
@@ -88,49 +60,64 @@ class PracticeScreen(Screen):
         Binding("n", "next", "Next"),
         Binding("q", "quit", "Quit"),
         Binding("?", "help", "Help"),
-        Binding("tab", "focus_next", "Next panel"),
+        Binding("tab", "focus_next", "Next pane"),
     ]
 
     CSS = """
-    #main-container {
+    PracticeScreen {
         layout: grid;
         grid-size: 2 2;
         grid-columns: 1fr 1fr;
-        grid-rows: 1fr auto;
+        grid-rows: 1fr 12;
     }
 
-    #problem-panel {
-        border: solid green;
-        padding: 1;
-        overflow-y: auto;
+    #problem-pane {
+        border: solid $primary;
+        border-title-color: $primary;
+        padding: 1 2;
     }
 
-    #editor-panel {
-        border: solid blue;
-        padding: 1;
+    #editor-pane {
+        border: solid $secondary;
+        border-title-color: $secondary;
+        padding: 0;
     }
 
-    #coach-panel {
+    #editor-pane TextArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    #coach-pane {
         column-span: 2;
-        border: solid yellow;
-        padding: 1;
-        height: 10;
+        border: solid $warning;
+        border-title-color: $warning;
+        padding: 1 2;
     }
 
-    .coach-input {
+    #coach-content {
+        height: auto;
+        max-height: 6;
+    }
+
+    #coach-input {
         height: 3;
         margin-top: 1;
+        border: solid $surface-lighten-2;
     }
 
-    #stats-bar {
+    #stats-header {
         dock: top;
         height: 1;
-        background: $surface;
+        background: $primary-darken-3;
+        color: $text;
         text-align: center;
+        padding: 0 2;
     }
 
-    TextArea {
-        height: 100%;
+    .pane-title {
+        text-style: bold;
+        color: $text;
     }
     """
 
@@ -153,22 +140,39 @@ class PracticeScreen(Screen):
 
     def compose(self) -> ComposeResult:
         stats = self.db.get_stats()
-        yield StatsBar(stats, id="stats-bar")
+        streak = stats.get("streak", 0)
+        solved = stats.get("unique_problems", 0)
 
-        with Container(id="main-container"):
-            with Vertical(id="problem-panel"):
-                yield ProblemPanel()
+        yield Static(
+            f" GRIND  |  {streak} streak  |  {solved} solved ",
+            id="stats-header"
+        )
 
-            with Vertical(id="editor-panel"):
-                yield CodeEditor(language=self.settings.default_language, id="editor")
+        with ScrollableContainer(id="problem-pane"):
+            yield Markdown(
+                "# Welcome\n\nPress `n` to load the daily challenge.",
+                id="problem-content"
+            )
 
-            with Vertical(id="coach-panel"):
-                yield CoachPanel()
+        with Vertical(id="editor-pane"):
+            yield CodeEditor(language=self.settings.default_language, id="editor")
+
+        with Vertical(id="coach-pane"):
+            yield Markdown(
+                "*Coach ready. Press `h` for hints, `c` to chat.*",
+                id="coach-content"
+            )
+            yield TextArea(placeholder="Type message and press 'c' to chat...", id="coach-input")
 
         yield Footer()
 
     async def on_mount(self) -> None:
         """Called when screen is mounted."""
+        # Set border titles
+        self.query_one("#problem-pane").border_title = "Problem"
+        self.query_one("#editor-pane").border_title = f"Editor [{self.settings.default_language.upper()}]"
+        self.query_one("#coach-pane").border_title = "AI Coach"
+
         if self.current_problem:
             await self._show_problem(self.current_problem)
 
@@ -180,11 +184,31 @@ class PracticeScreen(Screen):
 
         # Update problem panel
         content = self.query_one("#problem-content", Markdown)
-        md = f"# {problem.title}\n\n**Difficulty:** {problem.difficulty}\n\n"
-        md += f"**Tags:** {', '.join(problem.topic_tags)}\n\n---\n\n"
-        # Convert HTML to markdown (simplified)
-        md += problem.question.replace("<p>", "\n").replace("</p>", "\n")
-        md += "\n".join(f"- {h}" for h in problem.hints[:2]) if problem.hints else ""
+
+        # Build markdown content
+        tags = ", ".join(problem.topic_tags) if problem.topic_tags else "None"
+        md = f"# {problem.title}\n\n"
+        md += f"**Difficulty:** {problem.difficulty}  \n"
+        md += f"**Tags:** {tags}\n\n"
+        md += "---\n\n"
+
+        # Clean up HTML content
+        question = problem.question
+        question = question.replace("<p>", "\n\n").replace("</p>", "")
+        question = question.replace("<code>", "`").replace("</code>", "`")
+        question = question.replace("<strong>", "**").replace("</strong>", "**")
+        question = question.replace("<em>", "*").replace("</em>", "*")
+        question = question.replace("<pre>", "\n```\n").replace("</pre>", "\n```\n")
+        question = question.replace("<ul>", "").replace("</ul>", "")
+        question = question.replace("<li>", "- ").replace("</li>", "\n")
+        question = question.replace("&nbsp;", " ")
+        question = question.replace("&lt;", "<").replace("&gt;", ">")
+        question = question.replace("&amp;", "&")
+        md += question
+
+        if problem.hints:
+            md += "\n\n---\n\n**Hints available:** " + str(len(problem.hints))
+
         content.update(md)
 
         # Set up coach context
@@ -194,6 +218,9 @@ class PracticeScreen(Screen):
         editor = self.query_one("#editor", CodeEditor)
         editor.text = LANGUAGE_TEMPLATES.get(self.settings.default_language, "")
 
+        # Update border title
+        self.query_one("#problem-pane").border_title = f"Problem: {problem.title}"
+
     async def action_hint(self) -> None:
         """Request a hint from the coach."""
         if not self.current_problem:
@@ -201,10 +228,10 @@ class PracticeScreen(Screen):
 
         self.hints_used += 1
         editor = self.query_one("#editor", CodeEditor)
-        
+
         levels = ["gentle", "medium", "strong"]
         level = levels[min(self.hints_used - 1, 2)]
-        
+
         coach_content = self.query_one("#coach-content", Markdown)
         coach_content.update("*Thinking...*")
 
@@ -255,12 +282,15 @@ class PracticeScreen(Screen):
     async def action_next(self) -> None:
         """Get next problem."""
         coach_content = self.query_one("#coach-content", Markdown)
-        coach_content.update("*Fetching next problem...*")
+        coach_content.update("*Fetching daily challenge...*")
 
-        problem = await self.client.get_daily()
-        # Convert DailyProblem to Problem
-        full_problem = await self.client.get_problem(problem.title_slug)
-        await self._show_problem(full_problem)
+        try:
+            problem = await self.client.get_daily()
+            full_problem = await self.client.get_problem(problem.title_slug)
+            await self._show_problem(full_problem)
+            coach_content.update("*Problem loaded. Good luck!*")
+        except Exception as e:
+            coach_content.update(f"**Error:** {e}")
 
 
 class WelcomeScreen(Screen):
@@ -274,25 +304,48 @@ class WelcomeScreen(Screen):
     ]
 
     CSS = """
-    #welcome-container {
+    WelcomeScreen {
         align: center middle;
     }
 
     #welcome-box {
-        width: 60;
+        width: 50;
         height: auto;
-        border: double green;
-        padding: 2;
+        border: double $primary;
+        padding: 1 2;
+        background: $surface;
     }
 
     #title {
         text-align: center;
         text-style: bold;
+        color: $primary;
+        padding: 1 0;
+    }
+
+    #subtitle {
+        text-align: center;
+        color: $text-muted;
+        padding-bottom: 1;
+    }
+
+    .stat-row {
+        text-align: center;
+        padding: 0 0 1 0;
+    }
+
+    .menu-section {
+        padding-top: 1;
     }
 
     .menu-item {
-        margin: 1 0;
         text-align: center;
+        padding: 0;
+    }
+
+    .menu-key {
+        color: $primary;
+        text-style: bold;
     }
     """
 
@@ -306,29 +359,26 @@ class WelcomeScreen(Screen):
     def compose(self) -> ComposeResult:
         stats = self.db.get_stats()
 
-        with Container(id="welcome-container"):
-            with Vertical(id="welcome-box"):
-                yield Static("🏋️ GRIND", id="title")
-                yield Static("", classes="menu-item")
-                yield Static(f"🔥 {stats['streak']} day streak", classes="menu-item")
-                yield Static(f"✅ {stats['unique_problems']} problems solved", classes="menu-item")
-                yield Static("", classes="menu-item")
-                yield Static("[d] Daily Challenge", classes="menu-item")
-                yield Static("[p] Problem List", classes="menu-item")
-                yield Static("[s] Statistics", classes="menu-item")
-                yield Static("[q] Quit", classes="menu-item")
+        with Vertical(id="welcome-box"):
+            yield Static("GRIND", id="title")
+            yield Static("AI-Powered LeetCode Practice", id="subtitle")
+            yield Rule()
+            yield Static(f"{stats['streak']} day streak  |  {stats['unique_problems']} solved", classes="stat-row")
+            yield Rule()
+            yield Static("", classes="menu-section")
+            yield Static("[d]  Daily Challenge", classes="menu-item")
+            yield Static("[p]  Problem List", classes="menu-item")
+            yield Static("[s]  Statistics", classes="menu-item")
+            yield Static("[q]  Quit", classes="menu-item")
 
         yield Footer()
 
     async def action_daily(self) -> None:
         """Start daily challenge."""
-        problem = await self.client.get_daily()
-        full_problem = await self.client.get_problem(problem.title_slug)
-
-        screen = PracticeScreen(
-            self.settings, self.client, self.coach, self.db, full_problem
-        )
+        screen = PracticeScreen(self.settings, self.client, self.coach, self.db)
         await self.app.push_screen(screen)
+        # Trigger loading the daily problem
+        await screen.action_next()
 
 
 class GrindApp(App):

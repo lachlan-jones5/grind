@@ -53,7 +53,7 @@ class TestProblemModels:
         """Test DailyProblem model."""
         data = {
             "date": "2024-01-15",
-            "title": "Daily Challenge",
+            "questionTitle": "Daily Challenge",
             "titleSlug": "daily-challenge",
             "difficulty": "Hard",
             "question": "Solve this...",
@@ -61,6 +61,7 @@ class TestProblemModels:
         daily = DailyProblem.model_validate(data)
 
         assert daily.date == "2024-01-15"
+        assert daily.title == "Daily Challenge"
         assert daily.title_slug == "daily-challenge"
 
     def test_user_stats_model(self):
@@ -129,7 +130,7 @@ class TestLeetCodeClient:
         """Test getting daily challenge."""
         response_data = {
             "date": "2024-01-15",
-            "title": "Daily Problem",
+            "questionTitle": "Daily Problem",
             "titleSlug": "daily-problem",
             "difficulty": "Medium",
             "question": "Solve this problem",
