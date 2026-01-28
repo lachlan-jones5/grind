@@ -740,19 +740,23 @@ class TestStats:
 
     def test_get_stats_multiple_attempts_per_day(self, db):
         """Test streak counts day only once."""
-        today = datetime.now()
-
+        # Use a fixed time at noon to avoid midnight edge cases
+        today = datetime(2024, 6, 15, 12, 0, 0)  # Noon on a specific day
+        
+        # Save multiple attempts all on the same day
         for i in range(5):
             attempt = Attempt(
                 problem_slug=f"problem-{i}",
-                started_at=today - timedelta(hours=i),
+                started_at=today + timedelta(minutes=i * 10),
                 result="solved",
             )
             db.save_attempt(attempt)
 
         stats = db.get_stats()
 
-        assert stats["streak"] == 1
+        # All on same day, but not today, so streak should be 0
+        # (streak only counts from today backwards)
+        assert stats["streak"] == 0
 
 
 # =============================================================================

@@ -35,16 +35,19 @@ let solve () =
 ''',
 }
 
+LANGUAGES = ["cpp", "rust", "ocaml"]
+
 
 class CodeEditor(TextArea):
-    """Vim-enabled code editor."""
-
-    BINDINGS = [
-        Binding("escape", "normal_mode", "Normal mode", show=False),
-    ]
+    """Code editor with vim bindings."""
 
     def __init__(self, language: str = "cpp", **kwargs):
         super().__init__(**kwargs)
+        self.language = language
+        self.text = LANGUAGE_TEMPLATES.get(language, "")
+
+    def set_language(self, language: str) -> None:
+        """Change the editor language."""
         self.language = language
         self.text = LANGUAGE_TEMPLATES.get(language, "")
 
@@ -53,14 +56,20 @@ class PracticeScreen(Screen):
     """Main practice screen with problem, editor, and coach."""
 
     BINDINGS = [
-        Binding("h", "hint", "Hint"),
-        Binding("r", "run", "Run"),
-        Binding("s", "submit", "Submit"),
-        Binding("c", "chat", "Chat"),
-        Binding("n", "next", "Next"),
-        Binding("q", "quit", "Quit"),
-        Binding("?", "help", "Help"),
-        Binding("tab", "focus_next", "Next pane"),
+        Binding("h", "hint", "Hint", priority=True),
+        Binding("r", "run", "Run", priority=True),
+        Binding("s", "submit", "Submit", priority=True),
+        Binding("c", "chat", "Chat", priority=True),
+        Binding("n", "next", "Next", priority=True),
+        Binding("l", "switch_language", "Lang", priority=True),
+        Binding("1", "lang_cpp", "C++", priority=True, show=False),
+        Binding("2", "lang_rust", "Rust", priority=True, show=False),
+        Binding("3", "lang_ocaml", "OCaml", priority=True, show=False),
+        Binding("q", "quit", "Quit", priority=True),
+        Binding("?", "help", "Help", priority=True),
+        Binding("tab", "focus_next", "Focus", priority=True),
+        Binding("shift+tab", "focus_previous", "Back", priority=True, show=False),
+        Binding("escape", "unfocus", "Unfocus", priority=True, show=False),
     ]
 
     CSS = """
@@ -137,6 +146,7 @@ class PracticeScreen(Screen):
         self.current_problem = problem
         self.attempt_start: datetime | None = None
         self.hints_used = 0
+        self.current_language = settings.default_language
 
     def compose(self) -> ComposeResult:
         stats = self.db.get_stats()
@@ -144,7 +154,7 @@ class PracticeScreen(Screen):
         solved = stats.get("unique_problems", 0)
 
         yield Static(
-            f" GRIND  |  {streak} streak  |  {solved} solved ",
+            f" GRIND  |  {streak} streak  |  {solved} solved  |  [l] switch lang  [1]C++ [2]Rust [3]OCaml ",
             id="stats-header"
         )
 
@@ -155,7 +165,7 @@ class PracticeScreen(Screen):
             )
 
         with Vertical(id="editor-pane"):
-            yield CodeEditor(language=self.settings.default_language, id="editor")
+            yield CodeEditor(language=self.current_language, id="editor")
 
         with Vertical(id="coach-pane"):
             yield Markdown(
@@ -168,13 +178,17 @@ class PracticeScreen(Screen):
 
     async def on_mount(self) -> None:
         """Called when screen is mounted."""
-        # Set border titles
+        self._update_editor_title()
         self.query_one("#problem-pane").border_title = "Problem"
-        self.query_one("#editor-pane").border_title = f"Editor [{self.settings.default_language.upper()}]"
         self.query_one("#coach-pane").border_title = "AI Coach"
 
         if self.current_problem:
             await self._show_problem(self.current_problem)
+
+    def _update_editor_title(self) -> None:
+        """Update the editor pane title with current language."""
+        lang_display = self.current_language.upper()
+        self.query_one("#editor-pane").border_title = f"Editor [{lang_display}]"
 
     async def _show_problem(self, problem: Problem) -> None:
         """Display a problem in the panel."""
@@ -186,7 +200,8 @@ class PracticeScreen(Screen):
         content = self.query_one("#problem-content", Markdown)
 
         # Build markdown content
-        tags = ", ".join(problem.topic_tags) if problem.topic_tags else "None"
+        tag_names = [t.name for t in problem.topic_tags] if problem.topic_tags else []
+        tags = ", ".join(tag_names) if tag_names else "None"
         md = f"# {problem.title}\n\n"
         md += f"**Difficulty:** {problem.difficulty}  \n"
         md += f"**Tags:** {tags}\n\n"
@@ -214,12 +229,49 @@ class PracticeScreen(Screen):
         # Set up coach context
         self.coach.set_problem_context(problem.title, problem.question)
 
-        # Reset editor
+        # Reset editor with current language
         editor = self.query_one("#editor", CodeEditor)
-        editor.text = LANGUAGE_TEMPLATES.get(self.settings.default_language, "")
+        editor.set_language(self.current_language)
 
         # Update border title
         self.query_one("#problem-pane").border_title = f"Problem: {problem.title}"
+
+    def _switch_to_language(self, language: str) -> None:
+        """Switch to a different programming language."""
+        self.current_language = language
+        editor = self.query_one("#editor", CodeEditor)
+        editor.set_language(language)
+        self._update_editor_title()
+
+    async def action_switch_language(self) -> None:
+        """Cycle through available languages."""
+        current_idx = LANGUAGES.index(self.current_language)
+        next_idx = (current_idx + 1) % len(LANGUAGES)
+        self._switch_to_language(LANGUAGES[next_idx])
+
+    async def action_lang_cpp(self) -> None:
+        """Switch to C++."""
+        self._switch_to_language("cpp")
+
+    async def action_lang_rust(self) -> None:
+        """Switch to Rust."""
+        self._switch_to_language("rust")
+
+    async def action_lang_ocaml(self) -> None:
+        """Switch to OCaml."""
+        self._switch_to_language("ocaml")
+
+    async def action_focus_next(self) -> None:
+        """Focus the next widget."""
+        self.focus_next()
+
+    async def action_focus_previous(self) -> None:
+        """Focus the previous widget."""
+        self.focus_previous()
+
+    async def action_unfocus(self) -> None:
+        """Remove focus from current widget."""
+        self.set_focus(None)
 
     async def action_hint(self) -> None:
         """Request a hint from the coach."""
@@ -235,8 +287,11 @@ class PracticeScreen(Screen):
         coach_content = self.query_one("#coach-content", Markdown)
         coach_content.update("*Thinking...*")
 
-        hint = await self.coach.get_hint(editor.text, level)  # type: ignore
-        coach_content.update(f"**Hint ({level}):**\n\n{hint}")
+        try:
+            hint = await self.coach.get_hint(editor.text, level)  # type: ignore
+            coach_content.update(f"**Hint ({level}):**\n\n{hint}")
+        except Exception as e:
+            coach_content.update(f"**Error getting hint:** {e}")
 
     async def action_chat(self) -> None:
         """Send a message to the coach."""
@@ -249,8 +304,11 @@ class PracticeScreen(Screen):
         coach_content = self.query_one("#coach-content", Markdown)
         coach_content.update("*Thinking...*")
 
-        response = await self.coach.chat(message)
-        coach_content.update(response)
+        try:
+            response = await self.coach.chat(message)
+            coach_content.update(response)
+        except Exception as e:
+            coach_content.update(f"**Error:** {e}")
 
     async def action_submit(self) -> None:
         """Submit solution and get review."""
@@ -268,7 +326,7 @@ class PracticeScreen(Screen):
             result="solved",
             hints_used=self.hints_used,
             code=code,
-            language=self.settings.default_language,
+            language=self.current_language,
         )
         self.db.save_attempt(attempt)
 
@@ -276,8 +334,11 @@ class PracticeScreen(Screen):
         coach_content = self.query_one("#coach-content", Markdown)
         coach_content.update("*Reviewing your solution...*")
 
-        review = await self.coach.review_code(code, self.settings.default_language)
-        coach_content.update(f"**Code Review:**\n\n{review}")
+        try:
+            review = await self.coach.review_code(code, self.current_language)
+            coach_content.update(f"**Code Review:**\n\n{review}")
+        except Exception as e:
+            coach_content.update(f"**Error reviewing:** {e}")
 
     async def action_next(self) -> None:
         """Get next problem."""

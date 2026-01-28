@@ -3,7 +3,17 @@
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class TopicTag(BaseModel):
+    """A topic tag from LeetCode."""
+
+    name: str
+    slug: str = ""
+    translated_name: str | None = Field(default=None, alias="translatedName")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Problem(BaseModel):
@@ -11,13 +21,18 @@ class Problem(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    title: str
+    title: str = Field(alias="questionTitle")
     title_slug: str = Field(alias="titleSlug")
     difficulty: str
     question: str  # HTML content
-    topic_tags: list[str] = Field(default_factory=list, alias="topicTags")
+    topic_tags: list[TopicTag] = Field(default_factory=list, alias="topicTags")
     hints: list[str] = Field(default_factory=list)
-    examples: list[dict[str, Any]] = Field(default_factory=list, alias="exampleTestcases")
+    example_testcases: str = Field(default="", alias="exampleTestcases")
+
+    @property
+    def tag_names(self) -> list[str]:
+        """Get list of tag names."""
+        return [tag.name for tag in self.topic_tags]
 
 
 class DailyProblem(BaseModel):
@@ -34,6 +49,8 @@ class DailyProblem(BaseModel):
 
 class UserStats(BaseModel):
     """User statistics from LeetCode."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     total_solved: int = Field(alias="totalSolved")
     easy_solved: int = Field(alias="easySolved")

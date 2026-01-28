@@ -9,7 +9,47 @@ from grind.api.leetcode import (
     Problem,
     DailyProblem,
     UserStats,
+    TopicTag,
 )
+
+
+# =============================================================================
+# TopicTag Model Tests
+# =============================================================================
+
+class TestTopicTagModel:
+    """Tests for TopicTag Pydantic model."""
+
+    def test_topic_tag_basic(self):
+        """Test TopicTag with basic fields."""
+        data = {"name": "Array", "slug": "array"}
+        tag = TopicTag.model_validate(data)
+        assert tag.name == "Array"
+        assert tag.slug == "array"
+
+    def test_topic_tag_with_translated_name(self):
+        """Test TopicTag with translated name."""
+        data = {"name": "Array", "slug": "array", "translatedName": "配列"}
+        tag = TopicTag.model_validate(data)
+        assert tag.translated_name == "配列"
+
+    def test_topic_tag_null_translated_name(self):
+        """Test TopicTag with null translated name."""
+        data = {"name": "Array", "slug": "array", "translatedName": None}
+        tag = TopicTag.model_validate(data)
+        assert tag.translated_name is None
+
+    def test_topic_tag_missing_translated_name(self):
+        """Test TopicTag with missing translated name."""
+        data = {"name": "Hash Table", "slug": "hash-table"}
+        tag = TopicTag.model_validate(data)
+        assert tag.translated_name is None
+
+    def test_topic_tag_empty_slug(self):
+        """Test TopicTag with empty slug defaults."""
+        data = {"name": "Test"}
+        tag = TopicTag.model_validate(data)
+        assert tag.slug == ""
 
 
 # =============================================================================
@@ -22,26 +62,45 @@ class TestProblemModel:
     def test_problem_from_api_response(self):
         """Test Problem model parses API response correctly."""
         data = {
-            "title": "Two Sum",
+            "questionTitle": "Two Sum",
             "titleSlug": "two-sum",
             "difficulty": "Easy",
             "question": "<p>Given an array...</p>",
-            "topicTags": ["array", "hash-table"],
+            "topicTags": [
+                {"name": "Array", "slug": "array", "translatedName": None},
+                {"name": "Hash Table", "slug": "hash-table", "translatedName": None},
+            ],
             "hints": ["Try using a hash map"],
-            "exampleTestcases": [{"input": "[2,7,11,15]", "output": "[0,1]"}],
+            "exampleTestcases": "[2,7,11,15]\n9",
         }
         problem = Problem.model_validate(data)
 
         assert problem.title == "Two Sum"
         assert problem.title_slug == "two-sum"
         assert problem.difficulty == "Easy"
-        assert "array" in problem.topic_tags
+        assert len(problem.topic_tags) == 2
+        assert problem.topic_tags[0].name == "Array"
         assert len(problem.hints) == 1
+
+    def test_problem_tag_names_property(self):
+        """Test Problem tag_names property."""
+        data = {
+            "questionTitle": "Test",
+            "titleSlug": "test",
+            "difficulty": "Easy",
+            "question": "Q",
+            "topicTags": [
+                {"name": "Array", "slug": "array"},
+                {"name": "DP", "slug": "dynamic-programming"},
+            ],
+        }
+        problem = Problem.model_validate(data)
+        assert problem.tag_names == ["Array", "DP"]
 
     def test_problem_with_missing_optional_fields(self):
         """Test Problem model handles missing optional fields."""
         data = {
-            "title": "Test Problem",
+            "questionTitle": "Test Problem",
             "titleSlug": "test-problem",
             "difficulty": "Medium",
             "question": "Description here",
@@ -51,13 +110,13 @@ class TestProblemModel:
         assert problem.title == "Test Problem"
         assert problem.topic_tags == []
         assert problem.hints == []
-        assert problem.examples == []
+        assert problem.example_testcases == ""
 
     def test_problem_all_difficulties(self):
         """Test Problem accepts all difficulty levels."""
         for difficulty in ["Easy", "Medium", "Hard"]:
             data = {
-                "title": "Test",
+                "questionTitle": "Test",
                 "titleSlug": "test",
                 "difficulty": difficulty,
                 "question": "Q",
@@ -68,7 +127,7 @@ class TestProblemModel:
     def test_problem_with_empty_topic_tags(self):
         """Test Problem with empty topic tags."""
         data = {
-            "title": "Test",
+            "questionTitle": "Test",
             "titleSlug": "test",
             "difficulty": "Easy",
             "question": "Q",
@@ -76,26 +135,33 @@ class TestProblemModel:
         }
         problem = Problem.model_validate(data)
         assert problem.topic_tags == []
+        assert problem.tag_names == []
 
     def test_problem_with_many_topic_tags(self):
         """Test Problem with many topic tags."""
-        tags = ["array", "hash-table", "two-pointers", "binary-search", "dp"]
+        tags = [
+            {"name": "Array", "slug": "array"},
+            {"name": "Hash Table", "slug": "hash-table"},
+            {"name": "Two Pointers", "slug": "two-pointers"},
+            {"name": "Binary Search", "slug": "binary-search"},
+            {"name": "DP", "slug": "dynamic-programming"},
+        ]
         data = {
-            "title": "Test",
+            "questionTitle": "Test",
             "titleSlug": "test",
             "difficulty": "Hard",
             "question": "Q",
             "topicTags": tags,
         }
         problem = Problem.model_validate(data)
-        assert problem.topic_tags == tags
         assert len(problem.topic_tags) == 5
+        assert problem.tag_names == ["Array", "Hash Table", "Two Pointers", "Binary Search", "DP"]
 
     def test_problem_with_multiple_hints(self):
         """Test Problem with multiple hints."""
         hints = ["Hint 1", "Hint 2", "Hint 3"]
         data = {
-            "title": "Test",
+            "questionTitle": "Test",
             "titleSlug": "test",
             "difficulty": "Medium",
             "question": "Q",
@@ -118,7 +184,7 @@ class TestProblemModel:
         </pre>
         """
         data = {
-            "title": "Test",
+            "questionTitle": "Test",
             "titleSlug": "test",
             "difficulty": "Easy",
             "question": html,
@@ -130,7 +196,7 @@ class TestProblemModel:
     def test_problem_with_unicode(self):
         """Test Problem with unicode characters."""
         data = {
-            "title": "Test 日本語",
+            "questionTitle": "Test 日本語",
             "titleSlug": "test-unicode",
             "difficulty": "Easy",
             "question": "Description with émojis 🎉 and ñ",
@@ -142,7 +208,7 @@ class TestProblemModel:
     def test_problem_slug_with_numbers(self):
         """Test Problem with numbers in slug."""
         data = {
-            "title": "3Sum",
+            "questionTitle": "3Sum",
             "titleSlug": "3sum",
             "difficulty": "Medium",
             "question": "Q",
@@ -154,7 +220,7 @@ class TestProblemModel:
         """Test Problem with very long slug."""
         long_slug = "a" * 200
         data = {
-            "title": "Long",
+            "questionTitle": "Long",
             "titleSlug": long_slug,
             "difficulty": "Easy",
             "question": "Q",
@@ -175,7 +241,7 @@ class TestProblemModel:
     def test_problem_missing_required_field_difficulty(self):
         """Test Problem raises error when difficulty is missing."""
         data = {
-            "title": "Test",
+            "questionTitle": "Test",
             "titleSlug": "test",
             "question": "Q",
         }
@@ -185,7 +251,7 @@ class TestProblemModel:
     def test_problem_missing_required_field_question(self):
         """Test Problem raises error when question is missing."""
         data = {
-            "title": "Test",
+            "questionTitle": "Test",
             "titleSlug": "test",
             "difficulty": "Easy",
         }
@@ -196,15 +262,16 @@ class TestProblemModel:
         """Test Problem uses aliases correctly."""
         # Using alias names
         data1 = {
-            "title": "Test",
+            "questionTitle": "Test",
             "titleSlug": "test-slug",
             "difficulty": "Easy",
             "question": "Q",
-            "topicTags": ["array"],
+            "topicTags": [{"name": "Array", "slug": "array"}],
         }
         problem1 = Problem.model_validate(data1)
         assert problem1.title_slug == "test-slug"
-        assert problem1.topic_tags == ["array"]
+        assert len(problem1.topic_tags) == 1
+        assert problem1.topic_tags[0].name == "Array"
 
 
 # =============================================================================
@@ -437,11 +504,11 @@ class TestLeetCodeClientMethods:
     async def test_get_problem(self, client, mock_response):
         """Test getting a specific problem."""
         response_data = {
-            "title": "Two Sum",
+            "questionTitle": "Two Sum",
             "titleSlug": "two-sum",
             "difficulty": "Easy",
             "question": "<p>Given an array...</p>",
-            "topicTags": ["array"],
+            "topicTags": [{"name": "Array", "slug": "array"}],
             "hints": [],
         }
 
@@ -459,7 +526,7 @@ class TestLeetCodeClientMethods:
     async def test_get_problem_with_special_characters(self, client, mock_response):
         """Test getting problem with special characters in slug."""
         response_data = {
-            "title": "3Sum",
+            "questionTitle": "3Sum",
             "titleSlug": "3sum",
             "difficulty": "Medium",
             "question": "Q",
