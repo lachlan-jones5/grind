@@ -10,9 +10,9 @@ from grind.tui.app import (
     GrindApp,
     WelcomeScreen,
     PracticeScreen,
-    CodeEditor,
     LANGUAGE_TEMPLATES,
 )
+from grind.tui.vim_editor import VimEditor, VimMode
 from grind.config import Settings
 from grind.api.leetcode import LeetCodeClient, Problem, DailyProblem
 from grind.ai.coach import Coach
@@ -78,56 +78,54 @@ class TestLanguageTemplates:
 
 
 # =============================================================================
-# CodeEditor Tests
+# VimEditor Tests
 # =============================================================================
 
-class TestCodeEditor:
-    """Tests for CodeEditor widget."""
+class TestVimEditor:
+    """Tests for VimEditor widget."""
 
     def test_editor_initialization_cpp(self):
         """Test editor initializes with C++ template."""
-        editor = CodeEditor(language="cpp")
-        assert editor.language == "cpp"
+        editor = VimEditor(language="cpp")
+        assert editor.code_language == "cpp"
         assert "class Solution" in editor.text
 
     def test_editor_initialization_rust(self):
         """Test editor initializes with Rust template."""
-        editor = CodeEditor(language="rust")
-        assert editor.language == "rust"
+        editor = VimEditor(language="rust")
+        assert editor.code_language == "rust"
         assert "impl Solution" in editor.text
 
     def test_editor_initialization_ocaml(self):
         """Test editor initializes with OCaml template."""
-        editor = CodeEditor(language="ocaml")
-        assert editor.language == "ocaml"
+        editor = VimEditor(language="ocaml")
+        assert editor.code_language == "ocaml"
         assert "let solve" in editor.text
 
     def test_editor_unknown_language(self):
         """Test editor with unknown language uses empty template."""
-        editor = CodeEditor(language="unknown")
+        editor = VimEditor(language="unknown")
         assert editor.text == ""
 
     def test_editor_empty_language(self):
         """Test editor with empty language."""
-        editor = CodeEditor(language="")
+        editor = VimEditor(language="")
         assert editor.text == ""
 
     def test_editor_stores_language(self):
         """Test editor stores language attribute."""
         for lang in ["cpp", "rust", "ocaml"]:
-            editor = CodeEditor(language=lang)
-            assert editor.language == lang
+            editor = VimEditor(language=lang)
+            assert editor.code_language == lang
 
     def test_editor_bindings_exist(self):
         """Test editor has bindings defined."""
-        assert hasattr(CodeEditor, "BINDINGS")
-        # CodeEditor may not have bindings in new version
-        # Just check the attribute exists
+        assert hasattr(VimEditor, "BINDINGS")
 
-    def test_editor_escape_binding(self):
-        """Test editor bindings are accessible."""
-        # Just verify bindings can be accessed
-        assert hasattr(CodeEditor, "BINDINGS")
+    def test_editor_vim_mode_default(self):
+        """Test editor starts in normal mode."""
+        editor = VimEditor()
+        assert editor.vim_mode == VimMode.NORMAL
 
 
 # =============================================================================
@@ -508,13 +506,12 @@ class TestBindings:
         """Test PracticeScreen has required bindings."""
         binding_keys = {b.key for b in PracticeScreen.BINDINGS}
 
-        assert "h" in binding_keys  # hint
-        assert "r" in binding_keys  # run
-        assert "s" in binding_keys  # submit
-        assert "c" in binding_keys  # chat
-        assert "n" in binding_keys  # next
-        assert "q" in binding_keys  # quit
-        assert "?" in binding_keys  # help
+        # Updated: now uses function keys
+        assert "f1" in binding_keys  # hint
+        assert "f2" in binding_keys  # run
+        assert "f3" in binding_keys  # submit
+        assert "f4" in binding_keys  # chat
+        assert "f5" in binding_keys  # next
         assert "tab" in binding_keys  # focus next
 
     def test_practice_screen_binding_count(self):
@@ -529,11 +526,12 @@ class TestBindings:
         assert "d" in binding_keys  # daily
         assert "p" in binding_keys  # problems
         assert "s" in binding_keys  # stats
+        assert "a" in binding_keys  # auth
         assert "q" in binding_keys  # quit
 
     def test_welcome_screen_binding_count(self):
         """Test WelcomeScreen has expected number of bindings."""
-        assert len(WelcomeScreen.BINDINGS) == 4
+        assert len(WelcomeScreen.BINDINGS) == 5  # Now includes auth
 
     def test_app_bindings(self):
         """Test GrindApp has required bindings."""
