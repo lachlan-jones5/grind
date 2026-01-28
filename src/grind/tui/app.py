@@ -3,7 +3,7 @@
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
-from textual.widgets import Footer, Header, Static, TextArea, Markdown, Label, Rule, Button
+from textual.widgets import Footer, Header, Static, TextArea, Markdown, Label, Rule
 from textual.screen import Screen
 
 from grind.config import Settings, load_settings
@@ -11,10 +11,8 @@ from grind.api.leetcode import LeetCodeClient, Problem
 from grind.ai.coach import Coach
 from grind.db.database import Database, Attempt
 from grind.tui.vim_editor import VimEditor, VimMode
-from grind.auth import CopilotAuth
 
 from datetime import datetime
-import asyncio
 
 
 LANGUAGE_TEMPLATES = {
@@ -41,135 +39,6 @@ let solve () =
 LANGUAGES = ["cpp", "rust", "ocaml"]
 
 
-class AuthScreen(Screen):
-    """GitHub Copilot authentication screen."""
-
-    BINDINGS = [
-        Binding("q", "quit", "Cancel"),
-        Binding("escape", "quit", "Cancel", show=False),
-    ]
-
-    CSS = """
-    AuthScreen {
-        align: center middle;
-    }
-
-    #auth-box {
-        width: 60;
-        height: auto;
-        border: double $primary;
-        padding: 2;
-        background: $surface;
-    }
-
-    #auth-title {
-        text-align: center;
-        text-style: bold;
-        color: $primary;
-        padding-bottom: 1;
-    }
-
-    #auth-status {
-        text-align: center;
-        padding: 1;
-    }
-
-    #auth-code {
-        text-align: center;
-        text-style: bold;
-        color: $warning;
-        padding: 1;
-    }
-
-    #auth-url {
-        text-align: center;
-        color: $text-muted;
-        padding: 1;
-    }
-
-    #auth-instructions {
-        text-align: center;
-        padding: 1;
-    }
-    """
-
-    def __init__(self, settings: Settings):
-        super().__init__()
-        self.settings = settings
-        self.auth: CopilotAuth | None = None
-        self._polling = False
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="auth-box"):
-            yield Static("GitHub Copilot Authentication", id="auth-title")
-            yield Rule()
-            yield Static("Checking authentication status...", id="auth-status")
-            yield Static("", id="auth-code")
-            yield Static("", id="auth-url")
-            yield Static("", id="auth-instructions")
-            yield Rule()
-            yield Static("[q] Cancel", classes="menu-item")
-        yield Footer()
-
-    async def on_mount(self) -> None:
-        """Start auth flow when screen mounts."""
-        self.auth = CopilotAuth(self.settings.copilot_relay_url)
-        
-        # Check current status first
-        status = await self.auth.check_status()
-        if status.get("authenticated"):
-            self.query_one("#auth-status").update("Already authenticated!")
-            self.query_one("#auth-instructions").update("Press [q] to return")
-            return
-        
-        # Start device flow
-        try:
-            flow = await self.auth.start_device_flow()
-            self.query_one("#auth-status").update("Enter this code:")
-            self.query_one("#auth-code").update(f"  {flow['user_code']}  ")
-            self.query_one("#auth-url").update(f"at {flow['verification_uri']}")
-            self.query_one("#auth-instructions").update("Waiting for authentication...")
-            
-            # Start polling in background
-            self._polling = True
-            asyncio.create_task(self._poll_auth())
-        except Exception as e:
-            self.query_one("#auth-status").update(f"Error: {e}")
-            self.query_one("#auth-instructions").update("Press [q] to return")
-
-    async def _poll_auth(self) -> None:
-        """Poll for authentication completion."""
-        while self._polling:
-            try:
-                result = await self.auth.poll_for_token()
-                
-                if result["status"] == "success":
-                    self.query_one("#auth-status").update("Authentication successful!")
-                    self.query_one("#auth-code").update("")
-                    self.query_one("#auth-url").update("")
-                    self.query_one("#auth-instructions").update("Press [q] to continue")
-                    self._polling = False
-                    return
-                elif result["status"] == "error":
-                    self.query_one("#auth-status").update(f"Error: {result['message']}")
-                    self.query_one("#auth-instructions").update("Press [q] to retry")
-                    self._polling = False
-                    return
-                
-                await asyncio.sleep(5)
-            except Exception as e:
-                self.query_one("#auth-status").update(f"Error: {e}")
-                self._polling = False
-                return
-
-    async def action_quit(self) -> None:
-        """Close auth screen."""
-        self._polling = False
-        if self.auth:
-            await self.auth.close()
-        self.app.pop_screen()
-
-
 class PracticeScreen(Screen):
     """Main practice screen with problem, editor, and coach."""
 
@@ -186,9 +55,8 @@ class PracticeScreen(Screen):
         Binding("ctrl+q", "app_quit", "Quit", priority=True),
         Binding("ctrl+p", "focus_problem", "Problem", priority=True, show=False),
         Binding("ctrl+e", "focus_editor", "Editor", priority=True, show=False),
-        Binding("ctrl+a", "focus_chat", "Chat Input", priority=True, show=False),
-        Binding("tab", "focus_next", "Focus", priority=True),
-        Binding("shift+tab", "focus_previous", "Back", priority=True, show=False),
+        Binding("ctrl+i", "focus_chat", "Chat", priority=True, show=False),
+        Binding("ctrl+n", "focus_next", "Next Pane", priority=True),
     ]
 
     CSS = """
@@ -281,20 +149,25 @@ class PracticeScreen(Screen):
         solved = stats.get("unique_problems", 0)
 
         yield Static(
-            f" GRIND | {streak} streak | {solved} solved | F1:Hint F2:Run F3:Submit F4:Chat F5:Next F6:Lang ",
+            f" GRIND | {streak} streak | {solved} solved | F1:Hint F3:Submit F4:Chat F5:Next F6:Lang Ctrl+N:Pane ",
             id="stats-header"
         )
 
         with ScrollableContainer(id="problem-pane"):
             yield Markdown(
-                "# Welcome\n\nPress `F5` or `n` to load the daily challenge.\n\n"
+                "# Welcome\n\nPress `F5` to load the daily challenge.\n\n"
                 "**Vim Editor Keys:**\n"
                 "- `i` - Insert mode\n"
                 "- `Esc` - Normal mode\n"
                 "- `h/j/k/l` - Move cursor\n"
                 "- `dd` - Delete line\n"
                 "- `yy` - Copy line\n"
-                "- `p` - Paste",
+                "- `p` - Paste\n\n"
+                "**Pane Navigation:**\n"
+                "- `Ctrl+N` - Next pane\n"
+                "- `Ctrl+P` - Problem pane\n"
+                "- `Ctrl+E` - Editor\n"
+                "- `Ctrl+I` - Chat input",
                 id="problem-content"
             )
 
@@ -412,10 +285,6 @@ class PracticeScreen(Screen):
         """Focus the next widget."""
         self.focus_next()
 
-    async def action_focus_previous(self) -> None:
-        """Focus the previous widget."""
-        self.focus_previous()
-
     async def action_focus_problem(self) -> None:
         """Focus the problem pane."""
         self.query_one("#problem-pane").focus()
@@ -520,7 +389,6 @@ class WelcomeScreen(Screen):
         Binding("d", "daily", "Daily Challenge"),
         Binding("p", "problems", "Problem List"),
         Binding("s", "stats", "Statistics"),
-        Binding("a", "auth", "Authenticate"),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -590,7 +458,6 @@ class WelcomeScreen(Screen):
             yield Static("[d]  Daily Challenge", classes="menu-item")
             yield Static("[p]  Problem List", classes="menu-item")
             yield Static("[s]  Statistics", classes="menu-item")
-            yield Static("[a]  Authenticate (Copilot)", classes="menu-item")
             yield Static("[q]  Quit", classes="menu-item")
 
         yield Footer()
@@ -601,10 +468,6 @@ class WelcomeScreen(Screen):
         await self.app.push_screen(screen)
         # Trigger loading the daily problem
         await screen.action_next()
-
-    async def action_auth(self) -> None:
-        """Open authentication screen."""
-        await self.app.push_screen(AuthScreen(self.settings))
 
 
 class GrindApp(App):

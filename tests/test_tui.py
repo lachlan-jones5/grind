@@ -506,13 +506,12 @@ class TestBindings:
         """Test PracticeScreen has required bindings."""
         binding_keys = {b.key for b in PracticeScreen.BINDINGS}
 
-        # Updated: now uses function keys
+        # Updated: now uses function keys and ctrl+n for pane switching
         assert "f1" in binding_keys  # hint
-        assert "f2" in binding_keys  # run
         assert "f3" in binding_keys  # submit
         assert "f4" in binding_keys  # chat
         assert "f5" in binding_keys  # next
-        assert "tab" in binding_keys  # focus next
+        assert "ctrl+n" in binding_keys  # focus next
 
     def test_practice_screen_binding_count(self):
         """Test PracticeScreen has expected number of bindings."""
@@ -526,12 +525,11 @@ class TestBindings:
         assert "d" in binding_keys  # daily
         assert "p" in binding_keys  # problems
         assert "s" in binding_keys  # stats
-        assert "a" in binding_keys  # auth
         assert "q" in binding_keys  # quit
 
     def test_welcome_screen_binding_count(self):
         """Test WelcomeScreen has expected number of bindings."""
-        assert len(WelcomeScreen.BINDINGS) == 5  # Now includes auth
+        assert len(WelcomeScreen.BINDINGS) == 4
 
     def test_app_bindings(self):
         """Test GrindApp has required bindings."""
