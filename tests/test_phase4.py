@@ -235,7 +235,9 @@ class TestProblemsScreenFiltering:
         screen._apply_filter()
 
         assert len(screen.filtered_problems) == 1
-        assert screen.filtered_problems[0].get("titleSlug") == "add-two-numbers"
+        # The one remaining should be the unsolved one
+        slug = screen.filtered_problems[0].get("titleSlug") or screen.filtered_problems[0].get("title_slug")
+        assert slug == "add-two-numbers"
 
     def test_cursor_navigation_uses_filtered_problems(self, mock_settings, mock_client, mock_coach, test_db):
         """Test cursor navigation respects filtered problem list."""

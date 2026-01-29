@@ -800,8 +800,9 @@ class ProblemsScreen(Screen):
             from grind.sync import SyncService
             sync_svc = SyncService(self.settings.get_db_path())
             solved = sync_svc.get_solved_problems()
-            self._solved_slugs = set(p["problem_slug"] for p in solved)
-        except Exception:
+            # ProblemStatus objects have 'slug' attribute
+            self._solved_slugs = set(p.slug for p in solved)
+        except Exception as e:
             self._solved_slugs = set()
 
     async def _load_problems(self) -> None:
