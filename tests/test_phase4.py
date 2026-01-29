@@ -255,59 +255,45 @@ class TestProblemsScreenFiltering:
 
 
 # =============================================================================
-# 4.3: Offline Mode Tests
+# 4.3: Login Required Tests (replaced offline/queue tests)
 # =============================================================================
 
 
-class TestOfflineModeIndicator:
-    """Tests for offline mode indicators."""
+class TestLoginRequired:
+    """Tests for login requirement."""
 
     def test_grind_app_has_online_status(self):
         """Test GrindApp tracks online status."""
         assert hasattr(GrindApp, "__init__")
-        # Check that the class definition includes is_online attribute
-        # We can't instantiate easily due to Textual, so check class source
         import inspect
         source = inspect.getsource(GrindApp.__init__)
         assert "is_online" in source
 
-    def test_grind_app_has_queue_count(self):
-        """Test GrindApp tracks queue count."""
+    def test_grind_app_requires_login(self):
+        """Test GrindApp requires login to use the app."""
         import inspect
-        source = inspect.getsource(GrindApp.__init__)
-        assert "queue_count" in source
-
-    def test_welcome_screen_shows_offline_status(self, mock_settings, mock_client, mock_coach, test_db):
-        """Test WelcomeScreen can display offline status."""
-        # Check CSS includes offline styling
-        assert "offline-status" in WelcomeScreen.CSS
+        source = inspect.getsource(GrindApp.on_mount)
+        # Should check authentication
+        assert "is_authenticated" in source
+        # Should show LoginRequiredScreen when not authenticated
+        assert "LoginRequiredScreen" in source
 
 
-class TestQueueProcessing:
-    """Tests for automatic queue processing."""
+class TestLoginRequiredScreen:
+    """Tests for LoginRequiredScreen."""
 
-    def test_grind_app_has_queue_methods(self):
-        """Test GrindApp has methods for queue processing."""
-        assert hasattr(GrindApp, "_update_queue_count")
-        assert hasattr(GrindApp, "_check_queue_and_process")
-        assert hasattr(GrindApp, "_process_queue_silently")
+    def test_login_required_screen_importable(self):
+        """Test LoginRequiredScreen can be imported."""
+        from grind.tui.app import LoginRequiredScreen
+        assert LoginRequiredScreen is not None
 
-    @pytest.mark.asyncio
-    async def test_update_queue_count_with_mock_sync(self, mock_settings):
-        """Test queue count update logic."""
-        with patch("grind.sync.SyncService") as MockSync:
-            # Setup mock
-            mock_sync = MagicMock()
-            mock_sync.get_pending_submissions.return_value = [
-                {"id": 1, "problem_slug": "two-sum"},
-                {"id": 2, "problem_slug": "add-two-numbers"},
-            ]
-            MockSync.return_value = mock_sync
-
-            # Test the queue count logic
-            pending = mock_sync.get_pending_submissions()
-            queue_count = len(pending) if pending else 0
-            assert queue_count == 2
+    def test_login_required_screen_has_bindings(self):
+        """Test LoginRequiredScreen has expected keybindings."""
+        from grind.tui.app import LoginRequiredScreen
+        screen = LoginRequiredScreen()
+        binding_keys = [b.key for b in screen.BINDINGS]
+        assert "q" in binding_keys
+        assert "r" in binding_keys
 
 
 # =============================================================================

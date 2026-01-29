@@ -22,7 +22,7 @@ class TestAgentConfig:
 
         assert "coach" in config.system_prompt.lower()
         assert config.temperature == 0.7
-        assert config.model == "gpt-4o"
+        assert config.model == "claude-opus-4-5-20250514"
 
     def test_custom_values(self):
         """Test AgentConfig with custom values."""
@@ -432,7 +432,7 @@ class TestSettingsIntegration:
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
 
-            assert settings.agent.model == "gpt-4o"
+            assert settings.agent.model == "claude-opus-4-5-20250514"
             assert settings.agent.temperature == 0.7
             assert len(settings.agent.system_prompt) > 0
 

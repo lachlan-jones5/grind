@@ -360,6 +360,198 @@ class LeetCodeAuth:
         
         raise AuthenticationError(f"Request failed after {MAX_RETRIES} retries: {last_error}")
 
+    async def get_problem_detail(self, title_slug: str) -> dict[str, Any] | None:
+        """Get full problem details including code snippets.
+        
+        Args:
+            title_slug: Problem slug (e.g., "two-sum")
+            
+        Returns:
+            Problem detail including codeSnippets or None if failed
+        """
+        session = self.get_session()
+        if not session:
+            return None
+        
+        try:
+            result = await self._graphql_request(
+                session,
+                query="""
+                    query questionData($titleSlug: String!) {
+                        question(titleSlug: $titleSlug) {
+                            questionId
+                            questionFrontendId
+                            title
+                            titleSlug
+                            content
+                            difficulty
+                            topicTags {
+                                name
+                                slug
+                            }
+                            codeSnippets {
+                                lang
+                                langSlug
+                                code
+                            }
+                            hints
+                            exampleTestcaseList
+                            sampleTestCase
+                            metaData
+                        }
+                    }
+                """,
+                variables={"titleSlug": title_slug},
+            )
+            
+            return result.get("data", {}).get("question")
+            
+        except AuthenticationError:
+            return None
+
+    async def run_code(
+        self,
+        title_slug: str,
+        code: str,
+        lang: str,
+        test_cases: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Run code against test cases without submitting.
+        
+        Args:
+            title_slug: Problem slug
+            code: Source code
+            lang: Language slug (e.g., "python3", "cpp")
+            test_cases: Optional custom test cases (newline-separated)
+            
+        Returns:
+            Run result or None if failed
+        """
+        session = self.get_session()
+        if not session:
+            raise AuthenticationError("Not authenticated")
+        
+        # First, get the question ID
+        problem = await self.get_problem_detail(title_slug)
+        if not problem:
+            raise AuthenticationError(f"Could not fetch problem: {title_slug}")
+        
+        question_id = problem.get("questionId")
+        if not question_id:
+            raise AuthenticationError("Could not get question ID")
+        
+        # Use example test cases if none provided
+        if not test_cases:
+            test_cases = problem.get("sampleTestCase", "")
+        
+        client = await self._get_client()
+        
+        # Make the interpret (run) request
+        headers = {
+            "Content-Type": "application/json",
+            "X-CSRFToken": session.csrf_token,
+            "Referer": f"{LEETCODE_BASE_URL}/problems/{title_slug}/",
+            "Origin": LEETCODE_BASE_URL,
+        }
+        
+        cookies = {
+            "LEETCODE_SESSION": session.leetcode_session,
+            "csrftoken": session.csrf_token,
+        }
+        
+        payload = {
+            "lang": lang,
+            "question_id": question_id,
+            "typed_code": code,
+            "data_input": test_cases,
+        }
+        
+        try:
+            response = await client.post(
+                f"{LEETCODE_BASE_URL}/problems/{title_slug}/interpret_solution/",
+                json=payload,
+                headers=headers,
+                cookies=cookies,
+            )
+            
+            if response.status_code == 401:
+                raise SessionExpiredError("Session has expired")
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            # Get the interpret_id and poll for results
+            interpret_id = result.get("interpret_id")
+            if not interpret_id:
+                return result
+            
+            # Poll for the result
+            return await self._poll_run_result(session, interpret_id)
+            
+        except httpx.HTTPStatusError as e:
+            raise AuthenticationError(f"Run failed: {e}")
+        except httpx.RequestError as e:
+            raise AuthenticationError(f"Network error: {e}")
+
+    async def _poll_run_result(
+        self,
+        session: Session,
+        interpret_id: str,
+        max_attempts: int = 30,
+        poll_interval: float = 1.0,
+    ) -> dict[str, Any]:
+        """Poll for run result.
+        
+        Args:
+            session: Authenticated session
+            interpret_id: The interpret/run ID to poll
+            max_attempts: Maximum polling attempts
+            poll_interval: Seconds between polls
+            
+        Returns:
+            Run result
+        """
+        client = await self._get_client()
+        
+        headers = {
+            "X-CSRFToken": session.csrf_token,
+            "Referer": LEETCODE_BASE_URL,
+        }
+        
+        cookies = {
+            "LEETCODE_SESSION": session.leetcode_session,
+            "csrftoken": session.csrf_token,
+        }
+        
+        for _ in range(max_attempts):
+            try:
+                response = await client.get(
+                    f"{LEETCODE_BASE_URL}/submissions/detail/{interpret_id}/check/",
+                    headers=headers,
+                    cookies=cookies,
+                )
+                
+                if response.status_code == 401:
+                    raise SessionExpiredError("Session has expired")
+                
+                response.raise_for_status()
+                result = response.json()
+                
+                state = result.get("state")
+                if state == "SUCCESS":
+                    return result
+                elif state in ("PENDING", "STARTED"):
+                    await asyncio.sleep(poll_interval)
+                    continue
+                else:
+                    # Unknown state, return what we have
+                    return result
+                    
+            except httpx.RequestError as e:
+                raise AuthenticationError(f"Polling failed: {e}")
+        
+        raise AuthenticationError(f"Polling timed out after {max_attempts} attempts")
+
 
 def extract_csrf_from_session(session_cookie: str) -> str | None:
     """Try to extract CSRF token from the session cookie or generate one.

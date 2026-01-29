@@ -143,6 +143,10 @@ class PracticeScreen(Screen):
         self.attempt_start: datetime | None = None
         self.hints_used = 0
         self.current_language = settings.default_language
+        # Store code snippets from LeetCode keyed by langSlug
+        self._code_snippets: dict[str, str] = {}
+        # Store test cases from LeetCode
+        self._test_cases: str = ""
 
     def compose(self) -> ComposeResult:
         stats = self.db.get_stats()
@@ -410,19 +414,178 @@ class PracticeScreen(Screen):
         # Set up coach context
         self.coach.set_problem_context(problem.title, problem.question)
 
-        # Reset editor with current language
+        # Fetch code snippets from LeetCode API
+        await self._fetch_code_snippets(problem.title_slug)
+
+        # Reset editor with current language template
         editor = self.query_one("#editor", VimEditor)
-        editor.set_language(self.current_language)
+        self._load_language_template(editor, self.current_language)
 
         # Update border title
         self.query_one("#problem-pane").border_title = f"Problem: {problem.title}"
+
+    async def _fetch_code_snippets(self, title_slug: str) -> None:
+        """Fetch code snippets from LeetCode for all languages."""
+        self._code_snippets = {}
+        self._test_cases = ""
+
+        grind_app = self.app
+        if not hasattr(grind_app, "leetcode_auth") or not grind_app.leetcode_auth:
+            return
+
+        try:
+            problem_detail = await grind_app.leetcode_auth.get_problem_detail(title_slug)
+            if problem_detail:
+                # Extract code snippets
+                snippets = problem_detail.get("codeSnippets", [])
+                for snippet in snippets or []:
+                    lang_slug = snippet.get("langSlug", "")
+                    code = snippet.get("code", "")
+                    if lang_slug and code:
+                        self._code_snippets[lang_slug] = code
+
+                # Extract test cases
+                self._test_cases = problem_detail.get("sampleTestCase", "") or ""
+        except Exception:
+            # Fall back to static templates if fetch fails
+            pass
+
+    def _load_language_template(self, editor: VimEditor, language: str) -> None:
+        """Load the appropriate code template for the language."""
+        # Map our language names to LeetCode langSlugs
+        lang_map = {
+            "cpp": "cpp",
+            "rust": "rust",
+            "ocaml": "ocaml",
+            "python": "python3",
+            "java": "java",
+            "javascript": "javascript",
+            "typescript": "typescript",
+            "go": "golang",
+            "c": "c",
+        }
+
+        lc_lang = lang_map.get(language, language)
+
+        if lc_lang in self._code_snippets:
+            # Use LeetCode's template
+            editor.text = self._code_snippets[lc_lang]
+        elif language in self._code_snippets:
+            editor.text = self._code_snippets[language]
+        elif language in LANGUAGE_TEMPLATES:
+            # Fall back to static template
+            editor.text = LANGUAGE_TEMPLATES[language]
+        else:
+            # Generic fallback
+            editor.text = f"// TODO: implement solution in {language}\n"
+
+        # Reset cursor to beginning
+        editor.cursor_location = (0, 0)
 
     def _switch_to_language(self, language: str) -> None:
         """Switch to a different programming language."""
         self.current_language = language
         editor = self.query_one("#editor", VimEditor)
-        editor.set_language(language)
+        self._load_language_template(editor, language)
         self._update_editor_title()
+
+    async def action_run(self) -> None:
+        """Run code against test cases on LeetCode."""
+        if not self.current_problem:
+            return
+
+        editor = self.query_one("#editor", VimEditor)
+        code = editor.text
+        coach_content = self.query_one("#coach-content", Markdown)
+
+        # Check if we're authenticated
+        grind_app = self.app
+        if not hasattr(grind_app, "leetcode_auth") or not grind_app.leetcode_auth:
+            coach_content.update(
+                "**Not authenticated with LeetCode**\n\n"
+                "Run `grind auth login` to connect your account."
+            )
+            return
+
+        coach_content.update("*Running code...*")
+
+        try:
+            # Map language to LeetCode langSlug
+            lang_map = {
+                "cpp": "cpp",
+                "rust": "rust",
+                "ocaml": "ocaml",
+                "python": "python3",
+                "java": "java",
+                "javascript": "javascript",
+                "typescript": "typescript",
+                "go": "golang",
+                "c": "c",
+            }
+            lc_lang = lang_map.get(self.current_language, self.current_language)
+
+            result = await grind_app.leetcode_auth.run_code(
+                title_slug=self.current_problem.title_slug,
+                code=code,
+                lang=lc_lang,
+                test_cases=self._test_cases if self._test_cases else None,
+            )
+
+            if not result:
+                coach_content.update("**Run failed:** No result returned")
+                return
+
+            # Format the result
+            status = result.get("status_msg", result.get("state", "Unknown"))
+            run_success = result.get("run_success", False)
+            
+            if run_success and result.get("correct_answer"):
+                # All test cases passed
+                total_testcases = result.get("total_testcases", "?")
+                runtime = result.get("status_runtime", "N/A")
+                coach_content.update(
+                    f"**Run Result: Accepted**\n\n"
+                    f"All {total_testcases} test cases passed\n"
+                    f"Runtime: {runtime}"
+                )
+            elif run_success:
+                # Some test cases failed
+                total_correct = result.get("total_correct", 0)
+                total_testcases = result.get("total_testcases", 0)
+                
+                # Show failed test case details
+                msg = f"**Run Result:** {total_correct}/{total_testcases} test cases passed\n\n"
+                
+                if result.get("code_answer"):
+                    msg += f"**Your output:** `{result.get('code_answer')}`\n"
+                if result.get("expected_code_answer"):
+                    msg += f"**Expected:** `{result.get('expected_code_answer')}`\n"
+                if result.get("std_output"):
+                    msg += f"\n**Stdout:**\n```\n{result.get('std_output')}\n```"
+                
+                coach_content.update(msg)
+            else:
+                # Compile error or runtime error
+                msg = f"**Run Result: {status}**\n\n"
+                
+                if result.get("compile_error"):
+                    msg += f"```\n{result.get('full_compile_error', result.get('compile_error'))}\n```"
+                elif result.get("runtime_error"):
+                    msg += f"```\n{result.get('full_runtime_error', result.get('runtime_error'))}\n```"
+                elif result.get("status_msg"):
+                    msg += result.get("status_msg")
+                
+                coach_content.update(msg)
+
+        except Exception as e:
+            error_msg = str(e)
+            if "Not authenticated" in error_msg or "Session expired" in error_msg:
+                coach_content.update(
+                    "**Session expired**\n\n"
+                    "Run `grind auth login` to reconnect."
+                )
+            else:
+                coach_content.update(f"**Run failed:**\n\n{error_msg}")
 
     async def action_switch_language(self) -> None:
         """Cycle through available languages."""
@@ -597,22 +760,7 @@ class PracticeScreen(Screen):
                     "Run `grind auth login` to reconnect."
                 )
             else:
-                # Queue for later if offline
-                try:
-                    from grind.sync import SyncService
-                    sync_svc = SyncService(self.settings.get_db_path())
-                    sync_svc.queue_submission(
-                        problem_slug=self.current_problem.title_slug,
-                        code=code,
-                        language=self.current_language,
-                    )
-                    coach_content.update(
-                        f"**Submission queued for later**\n\n"
-                        f"Error: {error_msg}\n\n"
-                        "Your submission has been saved and will be submitted when you're online."
-                    )
-                except Exception:
-                    coach_content.update(f"**Submission failed:**\n\n{error_msg}")
+                coach_content.update(f"**Submission failed:**\n\n{error_msg}")
 
     async def action_next(self) -> None:
         """Get next problem."""
@@ -991,6 +1139,101 @@ class ProblemsScreen(Screen):
             pass
 
 
+class LoginRequiredScreen(Screen):
+    """Screen shown when user is not logged in."""
+
+    BINDINGS = [
+        Binding("q", "quit", "Quit"),
+        Binding("r", "retry", "Retry"),
+    ]
+
+    CSS = """
+    LoginRequiredScreen {
+        align: center middle;
+    }
+
+    #login-box {
+        width: 60;
+        height: auto;
+        border: heavy $error;
+        padding: 2 4;
+        background: $surface;
+    }
+
+    #login-title {
+        text-align: center;
+        text-style: bold;
+        color: $error;
+        padding: 1 0;
+    }
+
+    #login-message {
+        text-align: center;
+        padding: 1 0;
+    }
+
+    .login-code {
+        text-align: center;
+        color: $primary;
+        text-style: bold;
+        padding: 1 0;
+    }
+
+    .login-hint {
+        text-align: center;
+        color: $text-muted;
+        padding: 1 0;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="login-box"):
+            yield Static("Login Required", id="login-title")
+            yield Rule()
+            yield Static(
+                "Grind requires a LeetCode account to function.",
+                id="login-message"
+            )
+            yield Static("")
+            yield Static("To log in, run:", classes="login-hint")
+            yield Static("grind auth login --session <SESSION> --csrf <CSRF>", classes="login-code")
+            yield Static("")
+            yield Static("Get cookies from leetcode.com (F12 > Application > Cookies)", classes="login-hint")
+            yield Rule()
+            yield Static("[r] Retry  |  [q] Quit", classes="login-hint")
+
+        yield Footer()
+
+    async def action_quit(self) -> None:
+        """Quit the application."""
+        self.app.exit()
+
+    async def action_retry(self) -> None:
+        """Retry authentication check."""
+        grind_app = self.app
+        if hasattr(grind_app, "leetcode_auth") and grind_app.leetcode_auth:
+            try:
+                is_auth = await grind_app.leetcode_auth.is_authenticated()
+                if is_auth:
+                    session = grind_app.leetcode_auth.get_session()
+                    if session:
+                        grind_app.leetcode_username = session.username
+                        grind_app.is_online = True
+                    # Pop this screen and show welcome
+                    self.app.pop_screen()
+                    await self.app.push_screen(
+                        WelcomeScreen(
+                            grind_app.settings,
+                            grind_app.client,
+                            grind_app.coach,
+                            grind_app.db,
+                            grind_app
+                        )
+                    )
+            except Exception:
+                pass  # Stay on this screen
+
+
 class StatsScreen(Screen):
     """Statistics and progress dashboard screen."""
 
@@ -1114,8 +1357,7 @@ class StatsScreen(Screen):
 
             yield Rule()
 
-            # Queue and sync info
-            yield Static("", id="queue-info", classes="queue-info")
+            # Sync info
             yield Static("", id="sync-status", classes="sync-status")
 
         yield Footer()
@@ -1199,19 +1441,6 @@ class StatsScreen(Screen):
         self._update_progress_bar("easy", "Easy", "$success")
         self._update_progress_bar("medium", "Medium", "$warning")
         self._update_progress_bar("hard", "Hard", "$error")
-
-        # Queue info
-        queue_info = self.query_one("#queue-info", Static)
-        try:
-            from grind.sync import SyncService
-            sync_svc = SyncService(self.settings.get_db_path())
-            pending = sync_svc.get_pending_submissions()
-            if pending:
-                queue_info.update(f"Pending submissions: {len(pending)}")
-            else:
-                queue_info.update("")
-        except Exception:
-            queue_info.update("")
 
         # Sync status
         sync_status = self.query_one("#sync-status", Static)
@@ -1330,22 +1559,12 @@ class WelcomeScreen(Screen):
         else:
             auth_status = "Not logged in (grind auth login)"
 
-        # Get online/offline status and queue count
-        status_line = ""
-        if self.grind_app:
-            if not self.grind_app.is_online:
-                status_line = "[OFFLINE] "
-            if self.grind_app.queue_count > 0:
-                status_line += f"Queue: {self.grind_app.queue_count} pending"
-
         with Vertical(id="welcome-box"):
             yield Static("GRIND", id="title")
             yield Static("AI-Powered LeetCode Practice", id="subtitle")
             yield Rule()
             yield Static(auth_status, classes="stat-row", id="auth-status")
             yield Static(f"{stats['streak']} day streak  |  {stats['unique_problems']} solved", classes="stat-row")
-            if status_line:
-                yield Static(status_line, classes="stat-row offline-status", id="offline-status")
             yield Rule()
             yield Static("", classes="menu-section")
             yield Static("[d]  Daily Challenge", classes="menu-item")
@@ -1392,7 +1611,6 @@ class GrindApp(App):
         self.leetcode_auth: "LeetCodeAuth | None" = None
         self.leetcode_username: str | None = None
         self.is_online: bool = True
-        self.queue_count: int = 0
 
     async def on_mount(self) -> None:
         """Mount the welcome screen and check auth status."""
@@ -1400,87 +1618,24 @@ class GrindApp(App):
         from grind.auth import LeetCodeAuth
         self.leetcode_auth = LeetCodeAuth()
 
-        # Check authentication status (non-blocking)
+        # Check authentication status - REQUIRED
+        is_authenticated = False
         try:
-            if await self.leetcode_auth.is_authenticated():
+            is_authenticated = await self.leetcode_auth.is_authenticated()
+            if is_authenticated:
                 session = self.leetcode_auth.get_session()
                 if session:
                     self.leetcode_username = session.username
-        except Exception:
-            # Auth check failed, mark as offline
-            self.is_online = False
-
-        # Check queue count
-        await self._update_queue_count()
-
-        await self.push_screen(WelcomeScreen(self.settings, self.client, self.coach, self.db, self))
-
-        # Start periodic queue processing when online
-        self.set_interval(60, self._check_queue_and_process)
-
-    async def _update_queue_count(self) -> None:
-        """Update the pending submission queue count."""
-        try:
-            from grind.sync import SyncService
-            sync_svc = SyncService(self.settings.get_db_path())
-            pending = sync_svc.get_pending_submissions()
-            self.queue_count = len(pending) if pending else 0
-        except Exception:
-            self.queue_count = 0
-
-    async def _check_queue_and_process(self) -> None:
-        """Periodically check if online and process queue."""
-        # Check online status
-        try:
-            from grind.auth import LeetCodeAuth
-            auth = LeetCodeAuth()
-            is_auth = await auth.is_authenticated()
-            await auth.close()
-
-            if is_auth:
-                self.is_online = True
-                # Process queue if we have pending items
-                if self.queue_count > 0:
-                    await self._process_queue_silently()
-            else:
-                self.is_online = False
+                    self.is_online = True
         except Exception:
             self.is_online = False
 
-        await self._update_queue_count()
-
-    async def _process_queue_silently(self) -> None:
-        """Silently process queued submissions when online."""
-        if not self.leetcode_auth:
+        if not is_authenticated:
+            # Show login required screen
+            await self.push_screen(LoginRequiredScreen())
             return
 
-        try:
-            from grind.sync import SyncService, SubmissionService
-            sync_svc = SyncService(self.settings.get_db_path())
-            pending = sync_svc.get_pending_submissions()
-
-            if not pending:
-                return
-
-            submission_svc = SubmissionService(auth=self.leetcode_auth)
-
-            for item in pending[:3]:  # Process max 3 at a time
-                try:
-                    result = await submission_svc.submit(
-                        problem_slug=item["problem_slug"],
-                        code=item["code"],
-                        language=item["language"],
-                    )
-                    if result.is_accepted:
-                        sync_svc.mark_queue_submitted(item["id"], result.submission_id)
-                        sync_svc.mark_problem_solved_locally(item["problem_slug"])
-                except Exception:
-                    # Submission failed, leave in queue
-                    pass
-
-            await self._update_queue_count()
-        except Exception:
-            pass
+        await self.push_screen(WelcomeScreen(self.settings, self.client, self.coach, self.db, self))
 
     async def on_unmount(self) -> None:
         """Clean up resources."""
