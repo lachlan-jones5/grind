@@ -31,7 +31,7 @@ class TestVimModeEnum:
 
     def test_vim_mode_count(self):
         """Test correct number of modes."""
-        assert len(VimMode) == 4
+        assert len(VimMode) == 5
 
     def test_modes_are_unique(self):
         """Test all mode values are unique."""
@@ -474,3 +474,386 @@ class TestVimEditorTemplates:
         """Test OCaml template has comment."""
         editor = VimEditor(language="ocaml")
         assert "(*" in editor.text
+
+
+# =============================================================================
+# Visual Line Mode Tests
+# =============================================================================
+
+class TestVimEditorVisualLineMode:
+    """Tests for VISUAL LINE mode."""
+
+    def test_visual_line_mode_value(self):
+        """Test VISUAL LINE mode value."""
+        assert VimMode.VISUAL_LINE.value == "VISUAL LINE"
+
+    def test_mode_count_includes_visual_line(self):
+        """Test correct number of modes with VISUAL LINE."""
+        assert len(VimMode) == 5
+
+    def test_visual_line_transition(self):
+        """Test transition to VISUAL LINE mode."""
+        editor = VimEditor()
+        editor.vim_mode = VimMode.VISUAL_LINE
+        assert editor.vim_mode == VimMode.VISUAL_LINE
+
+    def test_visual_start_attribute(self):
+        """Test visual_start attribute exists."""
+        editor = VimEditor()
+        assert hasattr(editor, "visual_start")
+        assert editor.visual_start is None
+
+
+# =============================================================================
+# Count Prefix Tests
+# =============================================================================
+
+class TestVimEditorCountPrefix:
+    """Tests for count prefix functionality (e.g., 3j, 5dd)."""
+
+    def test_count_buffer_attribute_exists(self):
+        """Test count_buffer attribute exists."""
+        editor = VimEditor()
+        assert hasattr(editor, "count_buffer")
+
+    def test_count_buffer_starts_empty(self):
+        """Test count buffer starts empty."""
+        editor = VimEditor()
+        assert editor.count_buffer == ""
+
+    def test_count_buffer_can_store_digits(self):
+        """Test count buffer can store digits."""
+        editor = VimEditor()
+        editor.count_buffer = "123"
+        assert editor.count_buffer == "123"
+
+    def test_get_count_method_exists(self):
+        """Test _get_count method exists."""
+        assert hasattr(VimEditor, "_get_count")
+
+    def test_get_count_returns_default_one(self):
+        """Test _get_count returns 1 when buffer is empty."""
+        editor = VimEditor()
+        count = editor._get_count()
+        assert count == 1
+
+    def test_get_count_clears_buffer(self):
+        """Test _get_count clears the buffer."""
+        editor = VimEditor()
+        editor.count_buffer = "5"
+        editor._get_count()
+        assert editor.count_buffer == ""
+
+    def test_get_count_returns_buffer_value(self):
+        """Test _get_count returns correct value."""
+        editor = VimEditor()
+        editor.count_buffer = "42"
+        count = editor._get_count()
+        assert count == 42
+
+
+# =============================================================================
+# Find Character Tests
+# =============================================================================
+
+class TestVimEditorFindChar:
+    """Tests for f/F/t/T character search."""
+
+    def test_last_find_char_attribute(self):
+        """Test last_find_char attribute exists."""
+        editor = VimEditor()
+        assert hasattr(editor, "last_find_char")
+        assert editor.last_find_char == ""
+
+    def test_last_find_forward_attribute(self):
+        """Test last_find_forward attribute exists."""
+        editor = VimEditor()
+        assert hasattr(editor, "last_find_forward")
+        assert editor.last_find_forward is True
+
+    def test_last_find_till_attribute(self):
+        """Test last_find_till attribute exists."""
+        editor = VimEditor()
+        assert hasattr(editor, "last_find_till")
+        assert editor.last_find_till is False
+
+    def test_find_char_method_exists(self):
+        """Test _find_char method exists."""
+        assert hasattr(VimEditor, "_find_char")
+
+    def test_find_char_saves_last_search(self):
+        """Test _find_char saves the last search character."""
+        editor = VimEditor()
+        editor.text = "hello world"
+        editor.move_cursor((0, 0))
+        editor._find_char("w", forward=True, till=False)
+        assert editor.last_find_char == "w"
+        assert editor.last_find_forward is True
+        assert editor.last_find_till is False
+
+
+# =============================================================================
+# Motion Command Tests
+# =============================================================================
+
+class TestVimEditorMotions:
+    """Tests for vim motion commands."""
+
+    def test_move_word_forward_exists(self):
+        """Test _move_word_forward method exists."""
+        assert hasattr(VimEditor, "_move_word_forward")
+
+    def test_move_word_backward_exists(self):
+        """Test _move_word_backward method exists."""
+        assert hasattr(VimEditor, "_move_word_backward")
+
+    def test_move_word_end_exists(self):
+        """Test _move_word_end method exists."""
+        assert hasattr(VimEditor, "_move_word_end")
+
+    def test_move_paragraph_up_exists(self):
+        """Test _move_paragraph_up method exists."""
+        assert hasattr(VimEditor, "_move_paragraph_up")
+
+    def test_move_paragraph_down_exists(self):
+        """Test _move_paragraph_down method exists."""
+        assert hasattr(VimEditor, "_move_paragraph_down")
+
+    def test_move_to_first_nonblank_exists(self):
+        """Test _move_to_first_nonblank method exists."""
+        assert hasattr(VimEditor, "_move_to_first_nonblank")
+
+    def test_current_line_method_exists(self):
+        """Test _current_line method exists."""
+        assert hasattr(VimEditor, "_current_line")
+
+    def test_current_line_returns_string(self):
+        """Test _current_line returns the current line."""
+        editor = VimEditor()
+        editor.text = "line one\nline two\nline three"
+        editor.move_cursor((1, 0))
+        line = editor._current_line()
+        assert line == "line two"
+
+
+# =============================================================================
+# Edit Command Tests
+# =============================================================================
+
+class TestVimEditorEditCommands:
+    """Tests for vim edit commands."""
+
+    def test_replace_char_exists(self):
+        """Test _replace_char method exists."""
+        assert hasattr(VimEditor, "_replace_char")
+
+    def test_delete_char_before_exists(self):
+        """Test _delete_char_before method exists."""
+        assert hasattr(VimEditor, "_delete_char_before")
+
+    def test_delete_to_line_start_exists(self):
+        """Test _delete_to_line_start method exists."""
+        assert hasattr(VimEditor, "_delete_to_line_start")
+
+    def test_delete_to_line_end_exists(self):
+        """Test _delete_to_line_end method exists."""
+        assert hasattr(VimEditor, "_delete_to_line_end")
+
+    def test_delete_line_content_exists(self):
+        """Test _delete_line_content method exists."""
+        assert hasattr(VimEditor, "_delete_line_content")
+
+    def test_delete_to_document_start_exists(self):
+        """Test _delete_to_document_start method exists."""
+        assert hasattr(VimEditor, "_delete_to_document_start")
+
+    def test_delete_word_before_exists(self):
+        """Test _delete_word_before method exists."""
+        assert hasattr(VimEditor, "_delete_word_before")
+
+    def test_yank_word_exists(self):
+        """Test _yank_word method exists."""
+        assert hasattr(VimEditor, "_yank_word")
+
+    def test_join_lines_exists(self):
+        """Test _join_lines method exists."""
+        assert hasattr(VimEditor, "_join_lines")
+
+    def test_toggle_case_exists(self):
+        """Test _toggle_case method exists."""
+        assert hasattr(VimEditor, "_toggle_case")
+
+    def test_indent_line_exists(self):
+        """Test _indent_line method exists."""
+        assert hasattr(VimEditor, "_indent_line")
+
+    def test_outdent_line_exists(self):
+        """Test _outdent_line method exists."""
+        assert hasattr(VimEditor, "_outdent_line")
+
+
+# =============================================================================
+# Visual Selection Tests
+# =============================================================================
+
+class TestVimEditorVisualSelection:
+    """Tests for visual selection functionality."""
+
+    def test_get_selection_range_exists(self):
+        """Test _get_selection_range method exists."""
+        assert hasattr(VimEditor, "_get_selection_range")
+
+    def test_get_selection_range_none_when_no_visual_start(self):
+        """Test _get_selection_range returns None when not in visual mode."""
+        editor = VimEditor()
+        assert editor._get_selection_range() is None
+
+    def test_delete_visual_selection_exists(self):
+        """Test _delete_visual_selection method exists."""
+        assert hasattr(VimEditor, "_delete_visual_selection")
+
+    def test_yank_visual_selection_exists(self):
+        """Test _yank_visual_selection method exists."""
+        assert hasattr(VimEditor, "_yank_visual_selection")
+
+    def test_indent_visual_selection_exists(self):
+        """Test _indent_visual_selection method exists."""
+        assert hasattr(VimEditor, "_indent_visual_selection")
+
+    def test_outdent_visual_selection_exists(self):
+        """Test _outdent_visual_selection method exists."""
+        assert hasattr(VimEditor, "_outdent_visual_selection")
+
+    def test_toggle_case_visual_selection_exists(self):
+        """Test _toggle_case_visual_selection method exists."""
+        assert hasattr(VimEditor, "_toggle_case_visual_selection")
+
+
+# =============================================================================
+# Enter Insert Mode Tests
+# =============================================================================
+
+class TestVimEditorEnterInsertMode:
+    """Tests for entering insert mode."""
+
+    def test_enter_insert_mode_exists(self):
+        """Test _enter_insert_mode method exists."""
+        assert hasattr(VimEditor, "_enter_insert_mode")
+
+    def test_enter_insert_mode_changes_mode(self):
+        """Test _enter_insert_mode changes to INSERT mode."""
+        editor = VimEditor()
+        editor._enter_insert_mode()
+        assert editor.vim_mode == VimMode.INSERT
+
+
+# =============================================================================
+# Mode Display with Pending Keys Tests
+# =============================================================================
+
+class TestVimEditorModeDisplayExtended:
+    """Extended tests for mode display with pending keys and count."""
+
+    def test_mode_display_with_pending_key(self):
+        """Test mode display shows pending key."""
+        editor = VimEditor()
+        editor.pending_keys = "d"
+        display = editor.mode_display
+        assert "d" in display
+
+    def test_mode_display_with_count_buffer(self):
+        """Test mode display shows count buffer."""
+        editor = VimEditor()
+        editor.count_buffer = "5"
+        display = editor.mode_display
+        assert "5" in display
+
+    def test_mode_display_with_count_and_pending(self):
+        """Test mode display shows both count and pending."""
+        editor = VimEditor()
+        editor.count_buffer = "3"
+        editor.pending_keys = "d"
+        display = editor.mode_display
+        assert "3" in display
+        assert "d" in display
+
+
+# =============================================================================
+# Delete To Word End Tests
+# =============================================================================
+
+class TestVimEditorDeleteToWordEnd:
+    """Tests for delete to word end."""
+
+    def test_delete_to_word_end_exists(self):
+        """Test _delete_to_word_end method exists."""
+        assert hasattr(VimEditor, "_delete_to_word_end")
+
+
+# =============================================================================
+# Move Word End Backward Tests
+# =============================================================================
+
+class TestVimEditorMoveWordEndBackward:
+    """Tests for move word end backward (ge command)."""
+
+    def test_move_word_end_backward_exists(self):
+        """Test _move_word_end_backward method exists."""
+        assert hasattr(VimEditor, "_move_word_end_backward")
+
+
+# =============================================================================
+# Cursor Style Tests
+# =============================================================================
+
+class TestVimEditorCursorStyle:
+    """Tests for vim editor cursor styling."""
+
+    def test_update_cursor_style_method_exists(self):
+        """Test _update_cursor_style method exists."""
+        assert hasattr(VimEditor, "_update_cursor_style")
+
+    def test_normal_mode_cursor_no_blink(self):
+        """Test cursor doesn't blink in NORMAL mode."""
+        editor = VimEditor()
+        editor.vim_mode = VimMode.NORMAL
+        editor._update_cursor_style()
+        assert editor.cursor_blink is False
+
+    def test_insert_mode_cursor_blinks(self):
+        """Test cursor blinks in INSERT mode."""
+        editor = VimEditor()
+        editor.vim_mode = VimMode.INSERT
+        editor._update_cursor_style()
+        assert editor.cursor_blink is True
+
+    def test_visual_mode_cursor_no_blink(self):
+        """Test cursor doesn't blink in VISUAL mode."""
+        editor = VimEditor()
+        editor.vim_mode = VimMode.VISUAL
+        editor._update_cursor_style()
+        assert editor.cursor_blink is False
+
+    def test_visual_line_mode_cursor_no_blink(self):
+        """Test cursor doesn't blink in VISUAL LINE mode."""
+        editor = VimEditor()
+        editor.vim_mode = VimMode.VISUAL_LINE
+        editor._update_cursor_style()
+        assert editor.cursor_blink is False
+
+    def test_initial_cursor_style_is_normal(self):
+        """Test initial cursor style is set for NORMAL mode."""
+        editor = VimEditor()
+        assert editor.cursor_blink is False
+
+    def test_enter_insert_mode_updates_cursor(self):
+        """Test entering insert mode updates cursor style."""
+        editor = VimEditor()
+        assert editor.cursor_blink is False
+        editor._enter_insert_mode()
+        assert editor.cursor_blink is True
+
+    def test_default_css_defined(self):
+        """Test DEFAULT_CSS is defined."""
+        assert hasattr(VimEditor, "DEFAULT_CSS")
+        assert VimEditor.DEFAULT_CSS is not None

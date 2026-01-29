@@ -14,7 +14,7 @@ from grind.tui.app import (
 )
 from grind.tui.vim_editor import VimEditor, VimMode
 from grind.config import Settings
-from grind.api.leetcode import LeetCodeClient, Problem, DailyProblem
+from grind.api.leetcode import LeetCodeClient, Problem, DailyProblem, TopicTag
 from grind.ai.coach import Coach
 from grind.db.database import Database
 
@@ -172,7 +172,7 @@ class TestPracticeScreen:
             titleSlug="test-problem",
             difficulty="Easy",
             question="Solve this",
-            topicTags=[{"name": "Array", "slug": "array"}],
+            topicTags=[TopicTag(name="Array", slug="array")],
         )
 
         screen = PracticeScreen(settings, client, coach, db, problem=problem)
@@ -353,7 +353,7 @@ class TestPracticeScreenActions:
                 titleSlug="test-problem",
                 difficulty="Medium",
                 question="Solve this problem",
-                topicTags=[{"name": "DP", "slug": "dynamic-programming"}],
+                topicTags=[TopicTag(name="DP", slug="dynamic-programming")],
             )
 
             screen = PracticeScreen(settings, client, coach, db, problem=problem)
@@ -552,8 +552,8 @@ class TestProblemIntegration:
             difficulty="Easy",
             question="<p>Given an array...</p>",
             topicTags=[
-                {"name": "Array", "slug": "array"},
-                {"name": "Hash Table", "slug": "hash-table"},
+                TopicTag(name="Array", slug="array"),
+                TopicTag(name="Hash Table", slug="hash-table"),
             ],
             hints=["Use a hash map"],
         )
@@ -608,3 +608,407 @@ class TestScreenState:
         for i in range(5):
             practice_screen.hints_used += 1
             assert practice_screen.hints_used == i + 1
+
+
+# =============================================================================
+# ProblemsScreen Tests
+# =============================================================================
+
+class TestProblemsScreen:
+    """Tests for ProblemsScreen component."""
+
+    @pytest.fixture
+    def problems_screen(self):
+        """Create a problems screen for testing."""
+        settings = MagicMock(spec=Settings)
+        settings.default_language = "cpp"
+        settings.agent = MagicMock()
+
+        client = MagicMock(spec=LeetCodeClient)
+        coach = MagicMock(spec=Coach)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db = Database(Path(tmpdir) / "test.db")
+            from grind.tui.app import ProblemsScreen
+            yield ProblemsScreen(settings, client, coach, db)
+
+    def test_problems_screen_initialization(self, problems_screen):
+        """Test ProblemsScreen initializes correctly."""
+        from grind.tui.app import ProblemsScreen
+        assert isinstance(problems_screen, ProblemsScreen)
+        assert problems_screen.current_plan == "top150"
+
+    def test_problems_screen_has_study_plans(self, problems_screen):
+        """Test ProblemsScreen has all study plans defined."""
+        plans = problems_screen.STUDY_PLANS
+        assert "top150" in plans
+        assert "blind75" in plans
+        assert "grind75" in plans
+        assert "neetcode150" in plans
+        assert "all" in plans
+
+    def test_study_plan_metadata(self, problems_screen):
+        """Test study plans have required metadata."""
+        for key, plan in problems_screen.STUDY_PLANS.items():
+            assert "name" in plan
+            assert "slug" in plan
+            assert "description" in plan
+
+    def test_problems_screen_bindings(self, problems_screen):
+        """Test ProblemsScreen has navigation bindings."""
+        bindings = problems_screen.BINDINGS
+        binding_keys = [b.key for b in bindings]
+        assert "escape" in binding_keys
+        assert "q" in binding_keys
+        assert "j" in binding_keys
+        assert "k" in binding_keys
+        assert "enter" in binding_keys
+        assert "1" in binding_keys
+        assert "2" in binding_keys
+        assert "3" in binding_keys
+        assert "4" in binding_keys
+        assert "5" in binding_keys
+
+    def test_initial_selected_index(self, problems_screen):
+        """Test initial selected index is 0."""
+        assert problems_screen.selected_index == 0
+
+    def test_problems_list_initially_empty(self, problems_screen):
+        """Test problems list is initially empty."""
+        assert problems_screen.problems == []
+
+
+class TestProblemsScreenStudyPlans:
+    """Tests for study plan functionality."""
+
+    def test_top150_plan_config(self):
+        """Test Top 150 Interview Questions plan configuration."""
+        from grind.tui.app import ProblemsScreen
+        plans = ProblemsScreen.STUDY_PLANS
+        assert plans["top150"]["name"] == "Top 150 Interview Questions"
+        assert plans["top150"]["slug"] == "top-interview-150"
+
+    def test_blind75_plan_config(self):
+        """Test Blind 75 plan configuration."""
+        from grind.tui.app import ProblemsScreen
+        plans = ProblemsScreen.STUDY_PLANS
+        assert plans["blind75"]["name"] == "Blind 75"
+        assert plans["blind75"]["slug"] == "blind-75"
+
+    def test_grind75_plan_config(self):
+        """Test Grind 75 plan configuration."""
+        from grind.tui.app import ProblemsScreen
+        plans = ProblemsScreen.STUDY_PLANS
+        assert plans["grind75"]["name"] == "Grind 75"
+        assert plans["grind75"]["slug"] == "grind-75"
+
+    def test_neetcode150_plan_config(self):
+        """Test NeetCode 150 plan configuration."""
+        from grind.tui.app import ProblemsScreen
+        plans = ProblemsScreen.STUDY_PLANS
+        assert plans["neetcode150"]["name"] == "NeetCode 150"
+        assert plans["neetcode150"]["slug"] == "neetcode-150"
+
+    def test_all_problems_plan_config(self):
+        """Test All Problems plan configuration."""
+        from grind.tui.app import ProblemsScreen
+        plans = ProblemsScreen.STUDY_PLANS
+        assert plans["all"]["name"] == "All Problems"
+        assert plans["all"]["slug"] is None  # No slug for all problems
+
+
+class TestProblemsScreenCSS:
+    """Tests for ProblemsScreen CSS styling."""
+
+    def test_css_defined(self):
+        """Test ProblemsScreen has CSS defined."""
+        from grind.tui.app import ProblemsScreen
+        assert ProblemsScreen.CSS is not None
+        assert len(ProblemsScreen.CSS) > 0
+
+    def test_css_has_grid_layout(self):
+        """Test CSS defines grid layout."""
+        from grind.tui.app import ProblemsScreen
+        assert "grid" in ProblemsScreen.CSS
+
+    def test_css_has_panes(self):
+        """Test CSS defines plans and problems panes."""
+        from grind.tui.app import ProblemsScreen
+        assert "plans-pane" in ProblemsScreen.CSS
+        assert "problems-pane" in ProblemsScreen.CSS
+
+    def test_css_has_difficulty_colors(self):
+        """Test CSS defines difficulty color classes."""
+        from grind.tui.app import ProblemsScreen
+        assert "problem-easy" in ProblemsScreen.CSS
+        assert "problem-medium" in ProblemsScreen.CSS
+        assert "problem-hard" in ProblemsScreen.CSS
+
+    def test_css_has_loading_indicator_class(self):
+        """Test CSS defines loading-indicator class instead of ID."""
+        from grind.tui.app import ProblemsScreen
+        # Should use class-based styling, not ID-based
+        assert "loading-indicator" in ProblemsScreen.CSS
+        # Should NOT have #loading ID selector (would cause duplicate ID issues)
+        assert "#loading" not in ProblemsScreen.CSS
+
+
+class TestProblemsScreenLoadingIndicator:
+    """Tests for loading indicator to prevent duplicate ID issues."""
+
+    def test_loading_indicator_uses_class_not_id(self):
+        """Test loading indicator uses class instead of ID to prevent duplicates."""
+        from grind.tui.app import ProblemsScreen
+        # The CSS should style via class, not ID
+        assert ".loading-indicator" in ProblemsScreen.CSS
+
+    def test_load_problems_method_exists(self):
+        """Test _load_problems method exists."""
+        from grind.tui.app import ProblemsScreen
+        assert hasattr(ProblemsScreen, "_load_problems")
+
+    def test_problems_screen_no_duplicate_id_in_css(self):
+        """Test ProblemsScreen CSS doesn't use #loading ID selector."""
+        from grind.tui.app import ProblemsScreen
+        css = ProblemsScreen.CSS
+        # Ensure we're not using ID-based selectors for loading
+        lines = [line.strip() for line in css.split('\n')]
+        loading_id_selectors = [l for l in lines if l.startswith("#loading")]
+        assert len(loading_id_selectors) == 0, "Should not use #loading ID selector"
+
+
+# =============================================================================
+# WelcomeScreen Action Tests
+# =============================================================================
+
+class TestWelcomeScreenActions:
+    """Tests for WelcomeScreen action methods."""
+
+    def test_welcome_screen_has_problems_action(self):
+        """Test WelcomeScreen has action_problems method."""
+        assert hasattr(WelcomeScreen, "action_problems")
+
+    def test_welcome_screen_has_daily_action(self):
+        """Test WelcomeScreen has action_daily method."""
+        assert hasattr(WelcomeScreen, "action_daily")
+
+    def test_welcome_screen_bindings_include_problems(self):
+        """Test WelcomeScreen bindings include 'p' for problems."""
+        bindings = WelcomeScreen.BINDINGS
+        binding_keys = [b.key for b in bindings]
+        assert "p" in binding_keys
+
+
+# =============================================================================
+# HTML to Markdown Conversion Tests
+# =============================================================================
+
+class TestHtmlToMarkdownConversion:
+    """Tests for HTML to Markdown conversion in PracticeScreen."""
+
+    @pytest.fixture
+    def practice_screen(self):
+        """Create a practice screen for testing."""
+        settings = MagicMock(spec=Settings)
+        settings.default_language = "cpp"
+        settings.agent = MagicMock()
+
+        client = MagicMock(spec=LeetCodeClient)
+        coach = MagicMock(spec=Coach)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db = Database(Path(tmpdir) / "test.db")
+            yield PracticeScreen(settings, client, coach, db)
+
+    def test_html_to_markdown_method_exists(self, practice_screen):
+        """Test _html_to_markdown method exists."""
+        assert hasattr(practice_screen, "_html_to_markdown")
+
+    def test_convert_paragraph_tags(self, practice_screen):
+        """Test paragraph tags are converted."""
+        html = "<p>First paragraph.</p><p>Second paragraph.</p>"
+        result = practice_screen._html_to_markdown(html)
+        assert "First paragraph." in result
+        assert "Second paragraph." in result
+
+    def test_convert_code_tags(self, practice_screen):
+        """Test inline code tags are converted."""
+        html = "Use <code>nums[i]</code> to access elements."
+        result = practice_screen._html_to_markdown(html)
+        assert "`nums[i]`" in result
+
+    def test_convert_pre_blocks(self, practice_screen):
+        """Test pre/code blocks are converted to fenced code blocks."""
+        html = "<pre>def foo():\n    return 42</pre>"
+        result = practice_screen._html_to_markdown(html)
+        assert "```" in result
+        assert "def foo():" in result
+
+    def test_convert_bold_tags(self, practice_screen):
+        """Test bold/strong tags are converted."""
+        html = "<strong>Important</strong> and <b>also bold</b>"
+        result = practice_screen._html_to_markdown(html)
+        assert "**Important**" in result
+        assert "**also bold**" in result
+
+    def test_convert_italic_tags(self, practice_screen):
+        """Test italic/em tags are converted."""
+        html = "<em>emphasized</em> and <i>italic</i>"
+        result = practice_screen._html_to_markdown(html)
+        assert "*emphasized*" in result
+        assert "*italic*" in result
+
+    def test_convert_unordered_list(self, practice_screen):
+        """Test unordered lists are converted."""
+        html = "<ul><li>Item 1</li><li>Item 2</li></ul>"
+        result = practice_screen._html_to_markdown(html)
+        assert "- Item 1" in result
+        assert "- Item 2" in result
+
+    def test_convert_ordered_list(self, practice_screen):
+        """Test ordered lists are converted."""
+        html = "<ol><li>First</li><li>Second</li><li>Third</li></ol>"
+        result = practice_screen._html_to_markdown(html)
+        assert "1. First" in result
+        assert "2. Second" in result
+        assert "3. Third" in result
+
+    def test_convert_links(self, practice_screen):
+        """Test links are converted."""
+        html = '<a href="https://example.com">Click here</a>'
+        result = practice_screen._html_to_markdown(html)
+        assert "[Click here](https://example.com)" in result
+
+    def test_convert_line_breaks(self, practice_screen):
+        """Test line breaks are converted."""
+        html = "Line 1<br>Line 2<br/>Line 3"
+        result = practice_screen._html_to_markdown(html)
+        assert "Line 1" in result
+        assert "Line 2" in result
+        assert "Line 3" in result
+
+    def test_convert_html_entities(self, practice_screen):
+        """Test HTML entities are decoded."""
+        html = "a &lt; b &amp;&amp; c &gt; d"
+        result = practice_screen._html_to_markdown(html)
+        assert "a < b && c > d" in result
+
+    def test_convert_nbsp(self, practice_screen):
+        """Test non-breaking spaces are converted."""
+        html = "Hello&nbsp;World"
+        result = practice_screen._html_to_markdown(html)
+        assert "Hello World" in result
+
+    def test_convert_superscript(self, practice_screen):
+        """Test superscript is converted."""
+        html = "2<sup>10</sup> = 1024"
+        result = practice_screen._html_to_markdown(html)
+        assert "^10" in result
+
+    def test_convert_subscript(self, practice_screen):
+        """Test subscript is converted."""
+        html = "H<sub>2</sub>O"
+        result = practice_screen._html_to_markdown(html)
+        assert "_2" in result
+
+    def test_convert_headers(self, practice_screen):
+        """Test header tags are converted."""
+        html = "<h2>Section Title</h2>"
+        result = practice_screen._html_to_markdown(html)
+        assert "## Section Title" in result
+
+    def test_convert_horizontal_rule(self, practice_screen):
+        """Test horizontal rules are converted."""
+        html = "Before<hr>After"
+        result = practice_screen._html_to_markdown(html)
+        assert "---" in result
+
+    def test_strip_unknown_tags(self, practice_screen):
+        """Test unknown tags are stripped."""
+        html = "<custom>content</custom>"
+        result = practice_screen._html_to_markdown(html)
+        assert "content" in result
+        assert "<custom>" not in result
+
+    def test_numeric_entities(self, practice_screen):
+        """Test numeric HTML entities are decoded."""
+        html = "&#65;&#66;&#67;"  # ABC
+        result = practice_screen._html_to_markdown(html)
+        assert "ABC" in result
+
+    def test_hex_entities(self, practice_screen):
+        """Test hex HTML entities are decoded."""
+        html = "&#x41;&#x42;&#x43;"  # ABC
+        result = practice_screen._html_to_markdown(html)
+        assert "ABC" in result
+
+
+class TestHtmlTableConversion:
+    """Tests for HTML table to Markdown table conversion."""
+
+    @pytest.fixture
+    def practice_screen(self):
+        """Create a practice screen for testing."""
+        settings = MagicMock(spec=Settings)
+        settings.default_language = "cpp"
+        settings.agent = MagicMock()
+
+        client = MagicMock(spec=LeetCodeClient)
+        coach = MagicMock(spec=Coach)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db = Database(Path(tmpdir) / "test.db")
+            yield PracticeScreen(settings, client, coach, db)
+
+    def test_convert_html_tables_method_exists(self, practice_screen):
+        """Test _convert_html_tables method exists."""
+        assert hasattr(practice_screen, "_convert_html_tables")
+
+    def test_simple_table(self, practice_screen):
+        """Test simple table conversion."""
+        html = """<table>
+            <tr><th>Name</th><th>Value</th></tr>
+            <tr><td>A</td><td>1</td></tr>
+            <tr><td>B</td><td>2</td></tr>
+        </table>"""
+        result = practice_screen._html_to_markdown(html)
+        assert "| Name | Value |" in result
+        assert "| --- | --- |" in result
+        assert "| A | 1 |" in result
+        assert "| B | 2 |" in result
+
+    def test_table_with_only_data_rows(self, practice_screen):
+        """Test table with only td elements (no th)."""
+        html = """<table>
+            <tr><td>X</td><td>Y</td></tr>
+            <tr><td>1</td><td>2</td></tr>
+        </table>"""
+        result = practice_screen._html_to_markdown(html)
+        assert "| X | Y |" in result
+        assert "| 1 | 2 |" in result
+
+
+# =============================================================================
+# LeetCode API Client Extended Tests
+# =============================================================================
+
+class TestLeetCodeClientStudyPlans:
+    """Tests for LeetCodeClient study plan functionality."""
+
+    def test_client_has_study_plan_method(self):
+        """Test LeetCodeClient has get_study_plan_problems method."""
+        assert hasattr(LeetCodeClient, "get_study_plan_problems")
+
+    @pytest.mark.asyncio
+    async def test_study_plan_returns_list(self):
+        """Test get_study_plan_problems returns a list."""
+        client = LeetCodeClient()
+        # Mock the internal client's get method
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = []
+        mock_response.raise_for_status = MagicMock()
+        client._client.get = AsyncMock(return_value=mock_response)
+
+        result = await client.get_study_plan_problems("blind-75")
+        assert isinstance(result, list)

@@ -1,4 +1,4 @@
-# Grind 🏋️
+# Grind
 
 AI-powered LeetCode practice TUI with vim bindings. Train smarter, not harder.
 
@@ -8,6 +8,7 @@ AI-powered LeetCode practice TUI with vim bindings. Train smarter, not harder.
 - **AI Coach** - Personalized coaching with Socratic hints, code review, and pattern recognition
 - **Spaced Repetition** - Automatically resurface problems based on your weak patterns
 - **Progress Tracking** - SQLite-backed history of attempts, streaks, and insights
+- **LeetCode Integration** - Sync solved problems and submit solutions directly
 - **Multiple Languages** - C++, Rust, and OCaml support
 
 ## Installation
@@ -32,19 +33,108 @@ grind --provider openrouter --language rust
 grind --relay-url http://myrelay:8080
 ```
 
-### Keybindings
+## LeetCode Authentication
 
+Grind can connect to your LeetCode account to sync your solved problems and submit solutions directly.
+
+### Getting Your Session Cookies
+
+1. Log in to [leetcode.com](https://leetcode.com) in your browser
+2. Open Developer Tools (F12) > Application > Cookies > leetcode.com
+3. Copy the values for:
+   - `LEETCODE_SESSION` - Your session token
+   - `csrftoken` - Your CSRF token
+
+### Authenticating
+
+```bash
+# Log in with your session cookies
+grind auth login --session <LEETCODE_SESSION> --csrf <csrftoken>
+
+# Check authentication status
+grind auth status
+
+# Log out
+grind auth logout
+```
+
+### Syncing Progress
+
+```bash
+# Sync your submission history
+grind sync
+
+# Full sync (ignore incremental)
+grind sync --full
+
+# Show sync status
+grind sync --status
+
+# Process pending submissions (from offline queue)
+grind sync --queue
+```
+
+### Submitting Solutions
+
+When practicing in the TUI:
+- **Ctrl+Enter** - Submit your solution to LeetCode
+- **F3** - Get AI review of your solution (local only)
+
+If you're offline, submissions are automatically queued and will be sent when you reconnect.
+
+### Troubleshooting
+
+**Session expired:**
+```bash
+# Re-authenticate with fresh cookies
+grind auth logout
+grind auth login --session <NEW_SESSION> --csrf <NEW_CSRF>
+```
+
+**Rate limiting:**
+Grind implements exponential backoff. Wait a few minutes and retry.
+
+**Premium problems:**
+Premium-only problems are filtered out automatically. They're marked in the database but won't appear in problem lists.
+
+## Keybindings
+
+### Main Menu
 | Key | Action |
 |-----|--------|
 | `d` | Daily challenge |
 | `p` | Problem list |
-| `h` | Get a hint (escalating: gentle → medium → strong) |
-| `r` | Run code |
-| `s` | Submit and get AI review |
+| `s` | Statistics dashboard |
+| `q` | Quit |
+
+### Problem List
+| Key | Action |
+|-----|--------|
+| `1-5` | Switch study plan (Top 150, Blind 75, etc.) |
+| `j/k` | Navigate up/down |
+| `Enter` | Select problem |
+| `f` | Toggle filter (All/Unsolved/Solved) |
+| `u` | Show unsolved only |
+| `a` | Show all |
+| `q` | Back |
+
+### Practice Screen
+| Key | Action |
+|-----|--------|
+| `h` | Get a hint (escalating: gentle -> medium -> strong) |
+| `r` | Run code locally |
+| `Ctrl+Enter` | Submit to LeetCode |
+| `F3` | Get AI review |
 | `c` | Chat with coach |
 | `n` | Next problem |
 | `Tab` | Switch panels |
 | `q` | Quit |
+
+### Statistics Screen
+| Key | Action |
+|-----|--------|
+| `r` | Refresh stats |
+| `q` | Back |
 
 ## Configuration
 
